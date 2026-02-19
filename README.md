@@ -1,2 +1,79 @@
 # lib-agents
-Collection of various agents, MCP implementation, etc
+
+Collection of AI agents for the [OpenCode](https://opencode.ai) TUI.
+
+Each agent is a self-contained package with custom tools, slash commands, skills, and an agent definition that can be installed into any project or globally.
+
+## Available Agents
+
+| Agent | Description |
+|-------|-------------|
+| [git-ops](agents/git-ops/) | Git/GitHub operations -- issue CRUD, branches, commits, PRs, code reviews, releases, conflict resolution |
+
+## Quick Start
+
+Install an agent with a single command -- no need to clone the repo first:
+
+```bash
+# Navigate to your project
+cd /path/to/your/project
+
+# Install the git-ops agent
+curl -fsSL https://raw.githubusercontent.com/kunallimaye/lib-agents/main/install.sh | bash -s -- git-ops
+
+# Or install globally (available in all projects)
+curl -fsSL https://raw.githubusercontent.com/kunallimaye/lib-agents/main/install.sh | bash -s -- git-ops --global
+
+# List available agents
+curl -fsSL https://raw.githubusercontent.com/kunallimaye/lib-agents/main/install.sh | bash -s -- --list
+```
+
+### Local install (for development)
+
+If you want to contribute or customize agents, clone the repo and use `--link`:
+
+```bash
+git clone https://github.com/kunallimaye/lib-agents.git
+cd /path/to/your/project
+/path/to/lib-agents/install.sh git-ops --link
+```
+
+## How It Works
+
+Each agent package in `agents/` contains:
+
+```
+agents/<name>/
+  agent.md          # Agent definition (mode, prompt, tools, permissions)
+  package.json      # Dependencies (if any)
+  tools/            # Custom TypeScript tools (executed by OpenCode via Bun)
+  commands/         # Slash commands (e.g., /issue, /pr, /commit)
+  skills/           # On-demand SKILL.md files for workflow guidance
+```
+
+The `install.sh` script copies (or symlinks) these files into the appropriate OpenCode config directories:
+
+- **Project-level** (`--project`): `.opencode/` in the current directory
+- **Global** (`--global`): `~/.config/opencode/`
+- **Development** (`--link`): Symlinks so changes in the repo reflect immediately
+
+## Prerequisites
+
+- [OpenCode](https://opencode.ai) installed
+- [Bun](https://bun.sh) runtime (used by OpenCode for TypeScript tools)
+- Agent-specific prerequisites (e.g., `gh` CLI for git-ops)
+
+## Contributing
+
+To add a new agent:
+
+1. Create a new directory under `agents/`
+2. Add an `agent.md` with frontmatter (description, mode, tools, permissions)
+3. Add custom tools in `tools/` as TypeScript files using `@opencode-ai/plugin`
+4. Add slash commands in `commands/` as markdown files
+5. Add skills in `skills/<name>/SKILL.md` if needed
+6. Update this README
+
+## License
+
+Apache License 2.0
