@@ -1,0 +1,6 @@
+{
+  "name": "opencode-docs",
+  "version": "0.1.0",
+  "description": "Documentation agent for OpenCode TUI - maintains minimalist README.md files",
+  "dependencies": {}
+}

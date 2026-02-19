@@ -6,9 +6,10 @@ Each agent is a self-contained package with custom tools, slash commands, skills
 
 ## Available Agents
 
-| Agent | Description |
-|-------|-------------|
-| [git-ops](agents/git-ops/) | Git/GitHub operations -- issue CRUD, branches, commits, PRs, code reviews, releases, conflict resolution |
+| Agent | Description | Dependencies |
+|-------|-------------|--------------|
+| [git-ops](agents/git-ops/) | Git/GitHub operations -- issue CRUD, branches, commits, PRs, code reviews, releases, conflict resolution | `gh` CLI |
+| [docs](agents/docs/) | Minimalist README.md maintenance -- analyze, generate, validate, and update project documentation | git-ops |
 
 ## Quick Start
 
@@ -46,10 +47,13 @@ Each agent package in `agents/` contains:
 agents/<name>/
   agent.md          # Agent definition (mode, prompt, tools, permissions)
   package.json      # Dependencies (if any)
+  DEPENDS           # Other agents this one depends on (one per line)
   tools/            # Custom TypeScript tools (executed by OpenCode via Bun)
   commands/         # Slash commands (e.g., /issue, /pr, /commit)
   skills/           # On-demand SKILL.md files for workflow guidance
 ```
+
+Agents can depend on other agents. When you install an agent, dependencies are installed automatically.
 
 The `install.sh` script copies (or symlinks) these files into the appropriate OpenCode config directories:
 
@@ -72,7 +76,8 @@ To add a new agent:
 3. Add custom tools in `tools/` as TypeScript files using `@opencode-ai/plugin`
 4. Add slash commands in `commands/` as markdown files
 5. Add skills in `skills/<name>/SKILL.md` if needed
-6. Update this README
+6. Add a `DEPENDS` file if the agent requires other agents
+7. Update this README
 
 ## License
 

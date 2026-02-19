@@ -187,6 +187,32 @@ install_agent() {
     exit 1
   fi
 
+  # Check for dependencies (DEPENDS file in agent directory)
+  if [ -f "${agent_src}/DEPENDS" ]; then
+    while IFS= read -r dep || [ -n "$dep" ]; do
+      dep=$(echo "$dep" | xargs)  # trim whitespace
+      [ -z "$dep" ] && continue
+      [[ "$dep" == \#* ]] && continue  # skip comments
+
+      # Determine target to check if dependency is already installed
+      local dep_target
+      case "$mode" in
+        project) dep_target="$(pwd)/.opencode" ;;
+        global)  dep_target="${HOME}/.config/opencode" ;;
+      esac
+
+      if [ ! -f "${dep_target}/agents/${dep}.md" ]; then
+        info "Agent '${agent_name}' depends on '${dep}'. Installing dependency..."
+        install_agent "$dep" "$mode" "${3:-}"
+        echo ""
+        info "Continuing with ${agent_name} installation..."
+        echo ""
+      else
+        ok "Dependency '${dep}' already installed"
+      fi
+    done < "${agent_src}/DEPENDS"
+  fi
+
   # Determine target directory
   local target
   case "$mode" in
@@ -303,19 +329,20 @@ install_agent() {
   echo ""
   ok "Installation complete!"
   echo ""
-  info "Usage:"
-  echo "  In OpenCode TUI:"
+  info "Usage in OpenCode TUI:"
   echo "    @${agent_name}  - Invoke the agent directly"
-  echo "    /issue          - Create or manage issues"
-  echo "    /pr             - Create or manage pull requests"
-  echo "    /commit         - Smart commit with conventional messages"
-  echo "    /review <n>     - Review a pull request"
-  echo "    /release        - Create a release"
-  echo "    /git-status     - Repository status overview"
-  echo "    /git-ops-init   - Check environment & setup defaults"
+
+  # List installed commands for this agent
+  if [ -d "${agent_src}/commands" ]; then
+    for cmd_file in "${agent_src}/commands"/*.md; do
+      if [ -f "$cmd_file" ]; then
+        local cmd_name=$(basename "$cmd_file" .md)
+        local cmd_desc=$(grep "^description:" "$cmd_file" | head -1 | sed 's/^description:\s*//')
+        echo "    /${cmd_name}$(printf '%*s' $((16 - ${#cmd_name})) '')- ${cmd_desc}"
+      fi
+    done
+  fi
   echo ""
-  info "The agent auto-checks the environment on first use."
-  info "Run /git-ops-init to manually check or set up labels/milestones."
 }
 
 # ============================================================================
