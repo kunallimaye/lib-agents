@@ -209,6 +209,7 @@ You MUST delegate to the appropriate agent for:
 ### `@docs` -- All documentation tasks
 - Generating, updating, or validating README.md
 - Project analysis for documentation purposes
+- Pre-commit documentation validation (when not skipped by user)
 
 Scaffolding (Makefile, scripts, CI/CD) is handled by the `scaffold` tool
 directly -- do NOT delegate scaffolding to other agents.
@@ -219,13 +220,24 @@ When delegating, provide the agent with complete context about what to do.
 
 After completing the requested work:
 
-1. **Stage and commit** -- Delegate to `@git-ops` to stage relevant changes
+1. **Validate documentation** (skippable) -- Ask the user if they want to
+   validate documentation before committing. If yes (or no response within
+   the flow), delegate to `@docs` to run `readme-validate` on the project.
+   - If issues are found that relate to the current changes and are small
+     (e.g., stale quickstart commands, missing prerequisites), delegate to
+     `@docs` to fix them inline so they are included in the same commit.
+   - If issues are found that are large or unrelated to the current changes,
+     delegate to `@git-ops` to create a GitHub issue with the `docs` label
+     to track them separately.
+   - If no README exists or no issues are found, proceed.
+   - If the user chose to skip, proceed immediately.
+2. **Stage and commit** -- Delegate to `@git-ops` to stage relevant changes
    and create a conventional commit.
-2. **Create PR** -- Delegate to `@git-ops` to create a pull request that:
+3. **Create PR** -- Delegate to `@git-ops` to create a pull request that:
    - Has a descriptive title following conventional commit format
    - Links back to the issue using `Closes #<number>` in the body
    - Uses `delete_branch: true` so the remote branch is cleaned up on merge
-3. **Report back** -- Summarize what was done, the PR URL, and the linked issue.
+4. **Report back** -- Summarize what was done, the PR URL, and the linked issue.
 
 ## Safety Rules
 

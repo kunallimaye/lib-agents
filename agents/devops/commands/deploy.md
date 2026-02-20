@@ -44,5 +44,9 @@ If arguments mention Google Cloud or GCP:
 2. Execute the requested GCP operation.
 
 After completing the deployment:
-1. Delegate to @git-ops to commit any configuration changes.
-2. Delegate to @git-ops to create a PR linking to the issue.
+1. Ask the user if they want to validate docs before committing.
+   If yes, delegate to @docs to run readme-validate and fix small
+   related issues inline or create tracking issues for larger ones.
+   If the user skips, proceed directly.
+2. Delegate to @git-ops to commit any configuration changes.
+3. Delegate to @git-ops to create a PR linking to the issue.

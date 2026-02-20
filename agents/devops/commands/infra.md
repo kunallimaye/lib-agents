@@ -36,5 +36,9 @@ If arguments mention GCP resources:
 3. Show the results.
 
 After making infrastructure changes:
-1. Delegate to @git-ops to commit any Terraform file changes.
-2. Delegate to @git-ops to create a PR linking to the issue.
+1. Ask the user if they want to validate docs before committing.
+   If yes, delegate to @docs to run readme-validate and fix small
+   related issues inline or create tracking issues for larger ones.
+   If the user skips, proceed directly.
+2. Delegate to @git-ops to commit any Terraform file changes.
+3. Delegate to @git-ops to create a PR linking to the issue.

@@ -22,5 +22,9 @@ After pre-flight passes:
    Build (plan on PR, apply on merge).
 4. Run the appropriate scaffold tool exports (or `full_scaffold` for everything).
 5. Show a summary of all files created/skipped.
-6. Delegate to @git-ops to stage all new files and create a commit.
-7. Delegate to @git-ops to create a PR linking to the issue.
+6. Ask the user if they want to validate docs before committing.
+   If yes, delegate to @docs to run readme-validate and fix small
+   related issues inline or create tracking issues for larger ones.
+   If the user skips, proceed directly.
+7. Delegate to @git-ops to stage all new files and create a commit.
+8. Delegate to @git-ops to create a PR linking to the issue.

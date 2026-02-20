@@ -16,6 +16,10 @@ Before doing any work, run the full pre-flight check:
 4. Only after pre-flight passes, proceed with the requested work.
 
 After completing the work:
-1. Delegate to @git-ops to stage and commit changes.
-2. Delegate to @git-ops to create a PR that closes the linked issue.
-3. Report the PR URL and linked issue back to the user.
+1. Ask the user if they want to validate docs before committing.
+   If yes, delegate to @docs to run readme-validate and fix small
+   related issues inline or create tracking issues for larger ones.
+   If the user skips, proceed directly.
+2. Delegate to @git-ops to stage and commit changes.
+3. Delegate to @git-ops to create a PR that closes the linked issue.
+4. Report the PR URL and linked issue back to the user.
