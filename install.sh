@@ -6,15 +6,18 @@ set -euo pipefail
 # Deploys agent packages to OpenCode config directories
 #
 # Usage:
-#   ./install.sh <agent-name> [--project|--global|--link]
+#   ./install.sh <agent-name>... [--project|--global|--link]
+#   ./install.sh --all [--project|--global|--link]
 #
 # Remote usage (pipe via curl):
-#   curl -fsSL https://raw.githubusercontent.com/kunallimaye/lib-agents/main/install.sh | bash -s -- git-ops
+#   curl -fsSL https://raw.githubusercontent.com/kunallimaye/lib-agents/main/install.sh | bash -s -- git-ops docs
 #
 # Examples:
-#   ./install.sh git-ops --project    # Copy to .opencode/ in current dir
-#   ./install.sh git-ops --global     # Copy to ~/.config/opencode/
-#   ./install.sh git-ops --link       # Symlink instead of copy (for dev)
+#   ./install.sh git-ops                  # Install one agent to current project
+#   ./install.sh git-ops docs --global    # Install multiple agents globally
+#   ./install.sh --all                    # Install all agents to current project
+#   ./install.sh --all --global           # Install all agents globally
+#   ./install.sh git-ops --link           # Symlink instead of copy (for dev)
 # ============================================================================
 
 REPO_URL="https://github.com/kunallimaye/lib-agents.git"
@@ -68,15 +71,17 @@ ensure_agents_source() {
 
 usage() {
   cat <<EOF
-Usage: $(basename "$0") <agent-name> [--project|--global|--link]
+Usage: $(basename "$0") <agent-name>... [--project|--global|--link]
+       $(basename "$0") --all [--project|--global|--link]
 
-Deploy an agent package to your OpenCode configuration.
+Deploy one or more agent packages to your OpenCode configuration.
 Can be run locally from a cloned repo or piped directly via curl.
 
 Arguments:
-  agent-name    Name of the agent to install (e.g., git-ops)
+  agent-name    One or more agent names to install (e.g., git-ops docs)
 
 Options:
+  --all, -a     Install all available agents
   --project     Install to .opencode/ in the current directory (default)
   --global      Install to ~/.config/opencode/
   --link        Symlink instead of copy (for development, local only)
@@ -85,16 +90,19 @@ Options:
   --help        Show this help message
 
 Remote install (pipe via curl):
-  curl -fsSL https://raw.githubusercontent.com/kunallimaye/lib-agents/main/install.sh | bash -s -- git-ops
-  curl -fsSL https://raw.githubusercontent.com/kunallimaye/lib-agents/main/install.sh | bash -s -- git-ops --global
+  curl -fsSL https://raw.githubusercontent.com/kunallimaye/lib-agents/main/install.sh | bash -s -- git-ops docs
+  curl -fsSL https://raw.githubusercontent.com/kunallimaye/lib-agents/main/install.sh | bash -s -- --all --global
   curl -fsSL https://raw.githubusercontent.com/kunallimaye/lib-agents/main/install.sh | bash -s -- --list
 
 Local install:
-  $(basename "$0") git-ops                  # Install to current project
-  $(basename "$0") git-ops --global         # Install globally
+  $(basename "$0") git-ops                  # Install one agent to current project
+  $(basename "$0") git-ops docs             # Install multiple agents
+  $(basename "$0") git-ops docs --global    # Install multiple agents globally
+  $(basename "$0") --all                    # Install all agents
+  $(basename "$0") --all --global           # Install all agents globally
   $(basename "$0") git-ops --link           # Symlink for development
   $(basename "$0") --list                   # List available agents
-  $(basename "$0") git-ops --check          # Check prerequisites only
+  $(basename "$0") git-ops docs --check     # Check prerequisites only
 EOF
   exit 0
 }
@@ -354,10 +362,11 @@ if [ $# -eq 0 ]; then
   usage
 fi
 
-AGENT_NAME=""
+AGENT_NAMES=()
 MODE="project"
 USE_LINK=""
 CHECK_ONLY=false
+INSTALL_ALL=false
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -384,23 +393,21 @@ while [ $# -gt 0 ]; do
       CHECK_ONLY=true
       shift
       ;;
+    --all|-a)
+      INSTALL_ALL=true
+      shift
+      ;;
     -*)
       err "Unknown option: $1"
       echo ""
       usage
       ;;
     *)
-      AGENT_NAME="$1"
+      AGENT_NAMES+=("$1")
       shift
       ;;
   esac
 done
-
-if [ -z "$AGENT_NAME" ]; then
-  err "Agent name is required."
-  echo ""
-  usage
-fi
 
 echo ""
 echo "========================================="
@@ -411,12 +418,30 @@ echo ""
 # Download agent source if not available locally
 ensure_agents_source
 
-# Always check prerequisites
-check_prerequisites "$AGENT_NAME"
+# Populate agent list from --all if requested
+if [ "$INSTALL_ALL" = true ]; then
+  for dir in "${AGENTS_DIR}"/*/; do
+    [ -d "$dir" ] && AGENT_NAMES+=("$(basename "$dir")")
+  done
+fi
+
+if [ ${#AGENT_NAMES[@]} -eq 0 ]; then
+  err "At least one agent name is required (or use --all)."
+  echo ""
+  usage
+fi
+
+# Process each agent
+for AGENT_NAME in "${AGENT_NAMES[@]}"; do
+  check_prerequisites "$AGENT_NAME"
+
+  if [ "$CHECK_ONLY" = true ]; then
+    continue
+  fi
+
+  install_agent "$AGENT_NAME" "$MODE" "$USE_LINK"
+done
 
 if [ "$CHECK_ONLY" = true ]; then
   exit 0
 fi
-
-# Install
-install_agent "$AGENT_NAME" "$MODE" "$USE_LINK"
