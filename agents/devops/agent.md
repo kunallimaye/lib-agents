@@ -32,6 +32,8 @@ permission:
     container-ops: allow
     cloudbuild-ops: allow
     gcloud-ops: allow
+    perf-core: allow
+    perf-typescript: allow
   bash:
     "*": deny
     "git *": allow
