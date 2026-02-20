@@ -5,7 +5,31 @@ description: >
   features, bugs, and improvements to the git-ops agent as GitHub issues.
 mode: subagent
 temperature: 0.2
+tools:
+  # Disable tools not relevant to docs
+  scaffold_*: false
+  cloudbuild_*: false
+  podman_*: false
+  gcloud_*: false
+  terraform_*: false
+  troubleshoot_*: false
+  devops-preflight_*: false
+  branch-cleanup_*: false
+  # Disable git-ops tools (handled by delegation)
+  gh-issue_*: false
+  gh-pr_*: false
+  gh-release_*: false
+  gh-review_*: false
+  git-branch_*: false
+  git-commit_*: false
+  git-conflict_*: false
+  git-ops-init: false
+  git-ops-init_*: false
+  git-status_*: false
 permission:
+  skill:
+    "*": deny
+    readme-conventions: allow
   bash:
     "*": deny
     "find *": allow
