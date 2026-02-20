@@ -1,0 +1,6 @@
+{
+  "name": "opencode-ideate",
+  "version": "0.1.0",
+  "description": "Creative ideation agent for OpenCode TUI",
+  "dependencies": {}
+}
