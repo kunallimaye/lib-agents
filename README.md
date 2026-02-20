@@ -14,25 +14,33 @@ Each agent is a self-contained package with custom tools, slash commands, skills
 
 ## Quick Start
 
-Install an agent with a single command -- no need to clone the repo first:
+Install an agent into your current project (no clone needed):
 
 ```bash
-# Navigate to your project
-cd /path/to/your/project
-
-# Install the git-ops agent
 curl -fsSL https://raw.githubusercontent.com/kunallimaye/lib-agents/main/install.sh | bash -s -- git-ops
+```
 
-# Or install globally (available in all projects)
-curl -fsSL https://raw.githubusercontent.com/kunallimaye/lib-agents/main/install.sh | bash -s -- git-ops --global
+Install multiple agents at once:
 
-# List available agents
-curl -fsSL https://raw.githubusercontent.com/kunallimaye/lib-agents/main/install.sh | bash -s -- --list
+```bash
+curl -fsSL https://raw.githubusercontent.com/kunallimaye/lib-agents/main/install.sh | bash -s -- git-ops docs
+```
+
+Install all agents:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kunallimaye/lib-agents/main/install.sh | bash -s -- --all
+```
+
+Install globally (available in all projects):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kunallimaye/lib-agents/main/install.sh | bash -s -- --all --global
 ```
 
 ### Local install (for development)
 
-If you want to contribute or customize agents, clone the repo and use `--link`:
+Clone the repo and use `--link` so changes reflect immediately:
 
 ```bash
 git clone https://github.com/kunallimaye/lib-agents.git
