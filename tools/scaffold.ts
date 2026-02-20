@@ -58,7 +58,7 @@ function safeWrite(
 
 function generateMakefile(_pt: ProjectType): string {
   return `.PHONY: help \\
-  local-init local-clean local-build local-run \\
+  local-init local-clean local-build local-run local-test local-lint \\
   container-init container-clean container-build container-run \\
   cloud-init cloud-build cloud-deploy cloud-clean
 
@@ -79,6 +79,12 @@ local-build: ## Build the project locally
 
 local-run: ## Run the project locally
 \t@bash scripts/local.sh run
+
+local-test: ## Run tests locally
+\t@bash scripts/local.sh test
+
+local-lint: ## Run linter locally
+\t@bash scripts/local.sh lint
 
 # ─── Container Development ───────────────────────────────────────────
 
@@ -167,49 +173,61 @@ confirm() {
 }
 
 function generateLocalSh(pt: ProjectType): string {
-  const builds: Record<ProjectType, { init: string; clean: string; build: string; run: string }> = {
+  const builds: Record<ProjectType, { init: string; clean: string; build: string; run: string; test: string; lint: string }> = {
     node: {
       init: '  require_cmd node\n  npm install\n  log_ok "Dependencies installed"',
       clean: '  rm -rf node_modules dist .next coverage build out\n  log_ok "Cleaned local artifacts"',
       build: '  npm run build\n  log_ok "Build complete"',
       run: '  npm run dev',
+      test: '  npm test\n  log_ok "Tests passed"',
+      lint: '  npm run lint 2>/dev/null || npx eslint .\n  log_ok "Lint passed"',
     },
     go: {
       init: '  require_cmd go\n  go mod download\n  log_ok "Dependencies downloaded"',
       clean: '  rm -rf bin/ dist/\n  go clean -cache\n  log_ok "Cleaned local artifacts"',
       build: '  go build -o bin/ ./...\n  log_ok "Build complete"',
       run: '  go run .',
+      test: '  go test ./...\n  log_ok "Tests passed"',
+      lint: '  golangci-lint run 2>/dev/null || go vet ./...\n  log_ok "Lint passed"',
     },
     python: {
       init: '  require_cmd python3\n  python3 -m venv .venv\n  source .venv/bin/activate\n  pip install -r requirements.txt 2>/dev/null || pip install -e ".[dev]" 2>/dev/null || true\n  log_ok "Virtual environment created and dependencies installed"',
       clean: '  rm -rf .venv __pycache__ .eggs *.egg-info dist build .pytest_cache .mypy_cache\n  find . -name "*.pyc" -delete\n  log_ok "Cleaned local artifacts"',
       build: '  python3 -m build 2>/dev/null || log_warn "No build step configured"\n  log_ok "Build complete"',
       run: '  source .venv/bin/activate 2>/dev/null || true\n  python3 -m "${PROJECT_NAME}" 2>/dev/null || python3 main.py 2>/dev/null || python3 app.py 2>/dev/null || die "Could not determine entry point"',
+      test: '  source .venv/bin/activate 2>/dev/null || true\n  python3 -m pytest\n  log_ok "Tests passed"',
+      lint: '  source .venv/bin/activate 2>/dev/null || true\n  ruff check . 2>/dev/null || python3 -m flake8 .\n  log_ok "Lint passed"',
     },
     rust: {
       init: '  require_cmd cargo\n  cargo fetch\n  log_ok "Dependencies fetched"',
       clean: '  cargo clean\n  log_ok "Cleaned local artifacts"',
       build: '  cargo build --release\n  log_ok "Build complete"',
       run: '  cargo run',
+      test: '  cargo test\n  log_ok "Tests passed"',
+      lint: '  cargo clippy -- -D warnings\n  log_ok "Lint passed"',
     },
     java: {
       init: '  if [[ -f pom.xml ]]; then\n    require_cmd mvn\n    mvn dependency:resolve\n  elif [[ -f build.gradle ]]; then\n    require_cmd gradle\n    gradle dependencies\n  fi\n  log_ok "Dependencies resolved"',
       clean: '  if [[ -f pom.xml ]]; then mvn clean; elif [[ -f build.gradle ]]; then gradle clean; fi\n  log_ok "Cleaned local artifacts"',
       build: '  if [[ -f pom.xml ]]; then mvn package -DskipTests; elif [[ -f build.gradle ]]; then gradle build -x test; fi\n  log_ok "Build complete"',
       run: '  if [[ -f pom.xml ]]; then mvn exec:java; elif [[ -f build.gradle ]]; then gradle run; fi',
+      test: '  if [[ -f pom.xml ]]; then mvn test; elif [[ -f build.gradle ]]; then gradle test; fi\n  log_ok "Tests passed"',
+      lint: '  if [[ -f pom.xml ]]; then mvn checkstyle:check; elif [[ -f build.gradle ]]; then gradle check; fi\n  log_ok "Lint passed"',
     },
     generic: {
       init: '  log_warn "No project type detected. Customize this script for your project."\n  log_ok "Init complete"',
       clean: '  rm -rf build dist out tmp\n  log_ok "Cleaned local artifacts"',
       build: '  log_warn "No build step configured. Edit scripts/local.sh to add your build command."',
       run: '  log_warn "No run command configured. Edit scripts/local.sh to add your run command."',
+      test: '  log_warn "No test command configured. Edit scripts/local.sh to add your test command."',
+      lint: '  log_warn "No lint command configured. Edit scripts/local.sh to add your lint command."',
     },
   }
 
   const b = builds[pt]
   return `#!/usr/bin/env bash
 # Local development operations
-# Usage: bash scripts/local.sh {init|clean|build|run}
+# Usage: bash scripts/local.sh {init|clean|build|run|test|lint}
 
 SCRIPT_DIR="$(cd "$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
@@ -232,7 +250,17 @@ ${b.build}
 
 run() {
   log_info "Running locally..."
-${b.run}
+\${b.run}
+}
+
+test() {
+  log_info "Running tests..."
+\${b.test}
+}
+
+lint() {
+  log_info "Running linter..."
+\${b.lint}
 }
 
 # ─── Dispatch ─────────────────────────────────────────────────────────
@@ -242,7 +270,9 @@ case "\${1:-}" in
   clean) clean ;;
   build) build ;;
   run)   run   ;;
-  *)     die "Usage: $0 {init|clean|build|run}" ;;
+  test)  test  ;;
+  lint)  lint  ;;
+  *)     die "Usage: $0 {init|clean|build|run|test|lint}" ;;
 esac
 `
 }

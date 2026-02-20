@@ -156,13 +156,24 @@ After completing the requested work:
    - If yes, delegate to `@docs` to run `readme-validate` on the project.
    - Fix small related issues inline; create tracking issues for larger ones.
    - If the user skips, proceed immediately.
-2. **Stage and commit** -- Delegate to `@git-ops` to stage relevant changes
+2. **Run test validation** (mandatory) -- Run `validate_tests` to detect and
+   execute available tests before committing. This step is NEVER silently skipped.
+   - **PASS**: Tests passed. Proceed to commit.
+   - **FAIL**: Tests failed. Report failures to the user and prompt explicitly:
+     "Tests failed. Do you want to skip test validation and commit anyway?
+     This is not recommended." The user must explicitly confirm to proceed.
+   - **WARN**: No test infrastructure found. Prompt the user explicitly:
+     "No test infrastructure was found. Do you want to proceed without test
+     validation?" Suggest creating a tracking issue for adding tests.
+   - NEVER silently skip this step. The user must always see the result and
+     explicitly confirm if tests fail or no test infrastructure exists.
+3. **Stage and commit** -- Delegate to `@git-ops` to stage relevant changes
    and create a conventional commit.
-3. **Create PR** -- Delegate to `@git-ops` to create a pull request that:
+4. **Create PR** -- Delegate to `@git-ops` to create a pull request that:
    - Has a descriptive title following conventional commit format
    - Links back to the issue using `Closes #<number>` in the body
    - Uses `delete_branch: true` so the remote branch is cleaned up on merge
-4. **Report back** -- Summarize what was done, the PR URL, and the linked issue.
+5. **Report back** -- Summarize what was done, the PR URL, and the linked issue.
 
 ## Safety Rules
 
@@ -175,6 +186,9 @@ After completing the requested work:
 - **NEVER** run destructive commands (`rm -rf`, `podman system prune`, etc.)
   without explicit user approval.
 - **NEVER** skip the pre-flight protocol. It exists to prevent mistakes.
+- **NEVER** skip test validation silently. If tests fail or no test
+  infrastructure exists, the user must explicitly confirm before proceeding
+  to commit.
 - **ALWAYS** show what will change before executing destructive operations.
 - **ALWAYS** use `@git-ops` for GitHub operations instead of raw `gh` commands.
 - **ALWAYS** ensure `.gitignore` is up to date when scaffolding new files.

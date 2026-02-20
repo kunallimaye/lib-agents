@@ -1,4 +1,5 @@
 import { tool } from "@opencode-ai/plugin"
+import { existsSync } from "fs"
 
 async function run(cmd: string[]): Promise<{ ok: boolean; out: string }> {
   try {
@@ -390,6 +391,157 @@ export const full_preflight = tool({
     lines.push("")
     lines.push(`Issue  : #${args.issue_number} -- ${issueTitle}`)
     lines.push(`Branch : ${branchName || currentBranch}`)
+
+    return lines.join("\n")
+  },
+})
+
+// ─── Test Validation ─────────────────────────────────────────────────
+
+type ProjectType = "node" | "go" | "python" | "rust" | "java" | "generic"
+
+function detectProjectType(root: string): ProjectType {
+  if (existsSync(`${root}/package.json`)) return "node"
+  if (existsSync(`${root}/go.mod`)) return "go"
+  if (existsSync(`${root}/pyproject.toml`) || existsSync(`${root}/requirements.txt`)) return "python"
+  if (existsSync(`${root}/Cargo.toml`)) return "rust"
+  if (existsSync(`${root}/pom.xml`) || existsSync(`${root}/build.gradle`)) return "java"
+  return "generic"
+}
+
+function autoDetectTestCommand(pt: ProjectType): string | null {
+  const commands: Record<ProjectType, string | null> = {
+    node: "npm test",
+    go: "go test ./...",
+    python: "python3 -m pytest",
+    rust: "cargo test",
+    java: null, // too variable (maven vs gradle)
+    generic: null,
+  }
+  return commands[pt]
+}
+
+export const validate_tests = tool({
+  description:
+    "Run test validation before committing. Detects available test " +
+    "infrastructure in priority order: make local-test → make test → " +
+    "auto-detect by project type. Returns PASS, FAIL, or WARN with " +
+    "structured output and options for the user.",
+  args: {},
+  async execute(_args, context) {
+    const root = context.directory || "."
+    const lines: string[] = [
+      "Test Validation",
+      "===============",
+      "",
+    ]
+
+    // Detection priority:
+    // 1. make local-test
+    // 2. make test
+    // 3. auto-detect by project type
+
+    // Check if Makefile exists and has test targets
+    const hasMakefile = existsSync(`${root}/Makefile`)
+    let testCommand: string | null = null
+    let testSource = ""
+
+    if (hasMakefile) {
+      // Check for local-test target
+      const localTestCheck = await run(["make", "-n", "local-test"])
+      if (localTestCheck.ok) {
+        testCommand = "make local-test"
+        testSource = "Makefile target: local-test"
+      } else {
+        // Check for test target
+        const testCheck = await run(["make", "-n", "test"])
+        if (testCheck.ok) {
+          testCommand = "make test"
+          testSource = "Makefile target: test"
+        }
+      }
+    }
+
+    // Fallback: auto-detect by project type
+    if (!testCommand) {
+      const pt = detectProjectType(root)
+      const autoCmd = autoDetectTestCommand(pt)
+      if (autoCmd) {
+        testCommand = autoCmd
+        testSource = `auto-detected (${pt})`
+      }
+    }
+
+    // No test infrastructure found → WARN
+    if (!testCommand) {
+      lines.push("Result: WARN")
+      lines.push("")
+      lines.push("No test infrastructure was found.")
+      lines.push("")
+      lines.push("Searched for:")
+      lines.push("  1. make local-test  (not found)")
+      lines.push("  2. make test        (not found)")
+      lines.push("  3. Auto-detect      (no known test command for this project type)")
+      lines.push("")
+      lines.push("Options:")
+      lines.push("  1. Proceed without test validation (requires explicit user confirmation)")
+      lines.push("  2. Create a tracking issue to add test infrastructure")
+      lines.push("  3. Abort and add tests before committing")
+      lines.push("")
+      lines.push("The user MUST explicitly confirm before proceeding without tests.")
+
+      return lines.join("\n")
+    }
+
+    // Run the detected tests
+    lines.push(`Detected: ${testSource}`)
+    lines.push(`Command : ${testCommand}`)
+    lines.push("")
+
+    const cmdParts = testCommand.split(" ")
+    const result = await run(cmdParts)
+
+    if (result.ok) {
+      // PASS
+      lines.push("Result: PASS")
+      lines.push("")
+      lines.push("Tests passed. Proceeding to commit.")
+      if (result.out) {
+        lines.push("")
+        lines.push("Output:")
+        // Limit output to last 30 lines to avoid flooding
+        const outputLines = result.out.split("\n")
+        const tail = outputLines.length > 30
+          ? outputLines.slice(-30)
+          : outputLines
+        if (outputLines.length > 30) {
+          lines.push(`  ... (${outputLines.length - 30} lines truncated)`)
+        }
+        for (const l of tail) lines.push(`  ${l}`)
+      }
+    } else {
+      // FAIL
+      lines.push("Result: FAIL")
+      lines.push("")
+      lines.push("Tests failed. Review the output below.")
+      lines.push("")
+      lines.push("Output:")
+      const outputLines = result.out.split("\n")
+      const tail = outputLines.length > 50
+        ? outputLines.slice(-50)
+        : outputLines
+      if (outputLines.length > 50) {
+        lines.push(`  ... (${outputLines.length - 50} lines truncated)`)
+      }
+      for (const l of tail) lines.push(`  ${l}`)
+      lines.push("")
+      lines.push("Options:")
+      lines.push("  1. Fix the failing tests and re-run validation")
+      lines.push("  2. Skip test validation (requires explicit user confirmation — not recommended)")
+      lines.push("  3. Abort the commit")
+      lines.push("")
+      lines.push("The user MUST explicitly confirm before skipping failed tests.")
+    }
 
     return lines.join("\n")
   },

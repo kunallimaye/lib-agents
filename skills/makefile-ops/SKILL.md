@@ -18,13 +18,13 @@ project's development workflow.
 
 ## Makefile Conventions
 
-### Three Domains, Four Actions
+### Three Domains, Six Actions
 
-| Domain | init | clean | build | run/deploy |
-|--------|------|-------|-------|------------|
-| **Local dev** | `local-init` | `local-clean` | `local-build` | `local-run` |
-| **Container dev** | `container-init` | `container-clean` | `container-build` | `container-run` |
-| **Cloud runtime** | `cloud-init` | `cloud-clean` | `cloud-build` | `cloud-deploy` |
+| Domain | init | clean | build | run/deploy | test | lint |
+|--------|------|-------|-------|------------|------|------|
+| **Local dev** | `local-init` | `local-clean` | `local-build` | `local-run` | `local-test` | `local-lint` |
+| **Container dev** | `container-init` | `container-clean` | `container-build` | `container-run` | — | — |
+| **Cloud runtime** | `cloud-init` | `cloud-clean` | `cloud-build` | `cloud-deploy` | — | — |
 
 ### Thin-wrapper Pattern
 
@@ -131,30 +131,40 @@ Must exclude:
 - **init**: `npm install`
 - **build**: `npm run build`
 - **run**: `npm run dev`
+- **test**: `npm test`
+- **lint**: `npm run lint` or `npx eslint .`
 - **Dockerfile**: Multi-stage with `node:20-alpine`, `npm ci` in builder
 
 ### Go
 - **init**: `go mod download`
 - **build**: `go build -o bin/ ./...`
 - **run**: `go run .`
+- **test**: `go test ./...`
+- **lint**: `golangci-lint run` or `go vet ./...`
 - **Dockerfile**: Multi-stage with `golang:1.22-alpine`, `distroless` runtime
 
 ### Python
 - **init**: `python3 -m venv .venv && pip install -r requirements.txt`
 - **build**: `python3 -m build` (if applicable)
 - **run**: `python3 -m uvicorn main:app` (or `python3 main.py`)
+- **test**: `python3 -m pytest`
+- **lint**: `ruff check .` or `python3 -m flake8 .`
 - **Dockerfile**: Multi-stage with `python:3.12-slim`, venv copied to runtime
 
 ### Rust
 - **init**: `cargo fetch`
 - **build**: `cargo build --release`
 - **run**: `cargo run`
+- **test**: `cargo test`
+- **lint**: `cargo clippy -- -D warnings`
 - **Dockerfile**: Multi-stage with `rust:1.77-alpine`, `distroless` runtime
 
 ### Java
 - **init**: `mvn dependency:resolve` or `gradle dependencies`
 - **build**: `mvn package -DskipTests` or `gradle build -x test`
 - **run**: `mvn exec:java` or `gradle run`
+- **test**: `mvn test` or `gradle test`
+- **lint**: `mvn checkstyle:check` or `gradle check`
 - **Dockerfile**: Multi-stage with Maven/Gradle builder, JRE runtime
 
 ## Anti-patterns
