@@ -238,6 +238,9 @@ After completing the requested work:
    - Links back to the issue using `Closes #<number>` in the body
    - Uses `delete_branch: true` so the remote branch is cleaned up on merge
 4. **Report back** -- Summarize what was done, the PR URL, and the linked issue.
+5. **Local cleanup** -- After the PR is created, switch back to `main`,
+   pull latest changes, delete the local feature branch, and run
+   `git fetch --prune` to clean up stale remote-tracking references.
 
 ## Safety Rules
 
