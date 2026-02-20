@@ -11,6 +11,7 @@ Each agent is a self-contained package with custom tools, slash commands, skills
 | [git-ops](agents/git-ops/) | Git/GitHub operations -- issue CRUD, branches, commits, PRs, code reviews, releases, conflict resolution | `gh` CLI |
 | [docs](agents/docs/) | Minimalist README.md maintenance -- analyze, generate, validate, and update project documentation | git-ops |
 | [devops](agents/devops/) | Issue-driven DevOps workflows -- Makefile scaffolding, Podman containers, Terraform IaC, Cloud Build CI/CD, GCP operations | git-ops, docs |
+| [ideate](agents/ideate/) | Audience-centered creative brainstorming -- diverge-evaluate-converge ideation with multiple perspective lenses | git-ops, docs |
 
 ## Quick Start
 
