@@ -1,0 +1,28 @@
+# OpenCode local install artifacts
+.opencode/
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment variables
+.env
+.env.*
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+*~
+
+# TODO tracking (use GitHub issues instead)
+TODO.md
