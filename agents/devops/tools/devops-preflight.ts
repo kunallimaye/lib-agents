@@ -1,0 +1,396 @@
+import { tool } from "@opencode-ai/plugin"
+
+async function run(cmd: string[]): Promise<{ ok: boolean; out: string }> {
+  try {
+    const result = await Bun.$`${cmd}`.text()
+    return { ok: true, out: result.trim() }
+  } catch (e: any) {
+    return {
+      ok: false,
+      out: e?.stderr?.toString?.()?.trim() || e.message || "unknown error",
+    }
+  }
+}
+
+async function getDefaultBranch(): Promise<string> {
+  const result = await run([
+    "gh",
+    "repo",
+    "view",
+    "--json",
+    "defaultBranchRef",
+    "--jq",
+    ".defaultBranchRef.name",
+  ])
+  return result.ok ? result.out : "main"
+}
+
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40)
+}
+
+export const check_issue = tool({
+  description:
+    "Verify that a GitHub issue exists and is open. Returns the issue title " +
+    "and state, or an error if the issue does not exist.",
+  args: {
+    number: tool.schema.number().describe("GitHub issue number to verify"),
+  },
+  async execute(args) {
+    if (args.number <= 0) return "FAIL: Issue number must be a positive integer."
+
+    const result = await run([
+      "gh",
+      "issue",
+      "view",
+      String(args.number),
+      "--json",
+      "number,title,state,labels,url",
+    ])
+
+    if (!result.ok) {
+      return `FAIL: Could not find issue #${args.number}. Error: ${result.out}`
+    }
+
+    try {
+      const issue = JSON.parse(result.out)
+      const labels =
+        issue.labels?.map((l: any) => l.name).join(", ") || "none"
+      const lines = [
+        `PASS: Issue #${issue.number} exists`,
+        `  Title  : ${issue.title}`,
+        `  State  : ${issue.state}`,
+        `  Labels : ${labels}`,
+        `  URL    : ${issue.url}`,
+      ]
+
+      if (issue.state === "CLOSED") {
+        lines.push("")
+        lines.push(
+          "WARNING: This issue is closed. Consider reopening it or creating a new issue.",
+        )
+      }
+
+      return lines.join("\n")
+    } catch {
+      return result.out
+    }
+  },
+})
+
+export const check_clean = tool({
+  description:
+    "Check if the git working tree is clean (no uncommitted changes). " +
+    "Returns PASS if clean, FAIL with details if dirty.",
+  args: {},
+  async execute() {
+    const result = await run(["git", "status", "--porcelain"])
+
+    if (!result.ok) {
+      return `FAIL: Could not check git status. Error: ${result.out}`
+    }
+
+    if (result.out === "") {
+      return "PASS: Working tree is clean. No uncommitted changes."
+    }
+
+    const lines = result.out.split("\n")
+    const staged = lines.filter(
+      (l) => l.startsWith("M ") || l.startsWith("A ") || l.startsWith("D "),
+    )
+    const unstaged = lines.filter(
+      (l) =>
+        l.startsWith(" M") || l.startsWith(" D") || l.startsWith("MM"),
+    )
+    const untracked = lines.filter((l) => l.startsWith("??"))
+
+    const summary = [
+      `FAIL: Working tree is dirty. ${lines.length} file(s) with changes.`,
+      "",
+    ]
+
+    if (staged.length > 0) {
+      summary.push(`Staged (${staged.length}):`)
+      for (const f of staged) summary.push(`  ${f}`)
+      summary.push("")
+    }
+    if (unstaged.length > 0) {
+      summary.push(`Unstaged (${unstaged.length}):`)
+      for (const f of unstaged) summary.push(`  ${f}`)
+      summary.push("")
+    }
+    if (untracked.length > 0) {
+      summary.push(`Untracked (${untracked.length}):`)
+      for (const f of untracked) summary.push(`  ${f}`)
+      summary.push("")
+    }
+
+    summary.push("Options:")
+    summary.push("  1. Stash changes: delegate to @git-ops to stash")
+    summary.push("  2. Commit changes: delegate to @git-ops to commit")
+    summary.push(
+      "  3. Discard changes: only with explicit user confirmation",
+    )
+
+    return summary.join("\n")
+  },
+})
+
+export const check_branch = tool({
+  description:
+    "Create or verify a dedicated branch for an issue. Uses the naming " +
+    "convention <type>/<issue>-<slug>. If already on the correct branch, " +
+    "reports success. Otherwise creates and switches to the new branch.",
+  args: {
+    issue_number: tool.schema.number().describe("GitHub issue number"),
+    issue_title: tool.schema
+      .string()
+      .describe("Issue title (used to generate the branch slug)"),
+    type: tool.schema
+      .enum(["feature", "fix", "chore", "docs", "refactor", "test"])
+      .optional()
+      .describe("Branch type prefix (default: feature)"),
+  },
+  async execute(args) {
+    const type = args.type || "feature"
+    const slug = slugify(args.issue_title)
+    const branchName = `${type}/${args.issue_number}-${slug}`
+
+    // Check current branch
+    const currentResult = await run(["git", "rev-parse", "--abbrev-ref", "HEAD"])
+    if (!currentResult.ok) {
+      return `FAIL: Could not determine current branch. Error: ${currentResult.out}`
+    }
+
+    const currentBranch = currentResult.out
+
+    // Check if already on a branch for this issue
+    const issuePattern = `/${args.issue_number}-`
+    if (currentBranch.includes(issuePattern)) {
+      return [
+        `PASS: Already on branch for issue #${args.issue_number}`,
+        `  Branch: ${currentBranch}`,
+      ].join("\n")
+    }
+
+    // Get default branch to branch from
+    const defaultBranch = await getDefaultBranch()
+
+    // Switch to default branch first if not already on it
+    if (currentBranch !== defaultBranch) {
+      const switchResult = await run(["git", "checkout", defaultBranch])
+      if (!switchResult.ok) {
+        return `FAIL: Could not switch to ${defaultBranch}. Error: ${switchResult.out}`
+      }
+    }
+
+    // Pull latest
+    const pullResult = await run(["git", "pull", "--ff-only"])
+    if (!pullResult.ok) {
+      // Non-fatal: might not have upstream set or be offline
+    }
+
+    // Check if branch already exists locally
+    const existsResult = await run(["git", "rev-parse", "--verify", branchName])
+    if (existsResult.ok) {
+      // Branch exists, just switch to it
+      const checkoutResult = await run(["git", "checkout", branchName])
+      if (!checkoutResult.ok) {
+        return `FAIL: Branch '${branchName}' exists but could not switch to it. Error: ${checkoutResult.out}`
+      }
+      return [
+        `PASS: Switched to existing branch for issue #${args.issue_number}`,
+        `  Branch: ${branchName}`,
+      ].join("\n")
+    }
+
+    // Create new branch
+    const createResult = await run(["git", "checkout", "-b", branchName])
+    if (!createResult.ok) {
+      return `FAIL: Could not create branch '${branchName}'. Error: ${createResult.out}`
+    }
+
+    return [
+      `PASS: Created and switched to new branch for issue #${args.issue_number}`,
+      `  Branch : ${branchName}`,
+      `  Base   : ${defaultBranch}`,
+    ].join("\n")
+  },
+})
+
+export const full_preflight = tool({
+  description:
+    "Run all pre-flight checks in sequence: verify issue exists, check for " +
+    "clean working tree, and create/verify dedicated branch. Returns a " +
+    "consolidated report. This is the preferred way to run pre-flight checks.",
+  args: {
+    issue_number: tool.schema.number().describe("GitHub issue number"),
+    type: tool.schema
+      .enum(["feature", "fix", "chore", "docs", "refactor", "test"])
+      .optional()
+      .describe("Branch type prefix (default: feature)"),
+  },
+  async execute(args) {
+    const lines: string[] = [
+      "DevOps Pre-flight Check",
+      "=======================",
+      "",
+    ]
+
+    // 1. Check issue
+    lines.push("1. Issue Check")
+    lines.push("   -----------")
+
+    const issueResult = await run([
+      "gh",
+      "issue",
+      "view",
+      String(args.issue_number),
+      "--json",
+      "number,title,state,labels,url",
+    ])
+
+    if (!issueResult.ok) {
+      lines.push(`   FAIL: Could not find issue #${args.issue_number}.`)
+      lines.push(`   Error: ${issueResult.out}`)
+      lines.push("")
+      lines.push("Pre-flight FAILED. Cannot proceed without a valid issue.")
+      return lines.join("\n")
+    }
+
+    let issueTitle = ""
+    try {
+      const issue = JSON.parse(issueResult.out)
+      issueTitle = issue.title || ""
+      const labels =
+        issue.labels?.map((l: any) => l.name).join(", ") || "none"
+      lines.push(`   PASS: Issue #${issue.number} -- ${issue.title}`)
+      lines.push(`   State: ${issue.state}  |  Labels: ${labels}`)
+
+      if (issue.state === "CLOSED") {
+        lines.push(
+          "   WARNING: Issue is closed. Consider reopening or creating a new one.",
+        )
+      }
+    } catch {
+      lines.push(`   PASS: Issue #${args.issue_number} exists (could not parse details)`)
+    }
+    lines.push("")
+
+    // 2. Check clean tree
+    lines.push("2. Clean Tree Check")
+    lines.push("   ----------------")
+
+    const statusResult = await run(["git", "status", "--porcelain"])
+    if (!statusResult.ok) {
+      lines.push(`   FAIL: Could not check git status. Error: ${statusResult.out}`)
+      lines.push("")
+      lines.push("Pre-flight FAILED.")
+      return lines.join("\n")
+    }
+
+    if (statusResult.out !== "") {
+      const fileCount = statusResult.out.split("\n").length
+      lines.push(
+        `   FAIL: Working tree is dirty. ${fileCount} file(s) with changes.`,
+      )
+      lines.push("   Stash or commit changes before proceeding.")
+      lines.push("")
+      lines.push("Pre-flight FAILED. Clean the working tree first.")
+      return lines.join("\n")
+    }
+
+    lines.push("   PASS: Working tree is clean.")
+    lines.push("")
+
+    // 3. Check/create branch
+    lines.push("3. Branch Check")
+    lines.push("   ------------")
+
+    const type = args.type || "feature"
+    const slug = slugify(issueTitle)
+    const branchName = `${type}/${args.issue_number}-${slug}`
+
+    const currentResult = await run([
+      "git",
+      "rev-parse",
+      "--abbrev-ref",
+      "HEAD",
+    ])
+
+    if (!currentResult.ok) {
+      lines.push(`   FAIL: Could not determine current branch.`)
+      lines.push("")
+      lines.push("Pre-flight FAILED.")
+      return lines.join("\n")
+    }
+
+    const currentBranch = currentResult.out
+    const issuePattern = `/${args.issue_number}-`
+
+    if (currentBranch.includes(issuePattern)) {
+      lines.push(
+        `   PASS: Already on branch '${currentBranch}' for issue #${args.issue_number}`,
+      )
+    } else {
+      // Get default branch
+      const defaultBranch = await getDefaultBranch()
+
+      // Switch to default branch if needed
+      if (currentBranch !== defaultBranch) {
+        const switchResult = await run(["git", "checkout", defaultBranch])
+        if (!switchResult.ok) {
+          lines.push(`   FAIL: Could not switch to ${defaultBranch}.`)
+          lines.push("")
+          lines.push("Pre-flight FAILED.")
+          return lines.join("\n")
+        }
+      }
+
+      // Pull latest (non-fatal)
+      await run(["git", "pull", "--ff-only"])
+
+      // Check if branch exists
+      const existsResult = await run([
+        "git",
+        "rev-parse",
+        "--verify",
+        branchName,
+      ])
+
+      if (existsResult.ok) {
+        const checkoutResult = await run(["git", "checkout", branchName])
+        if (!checkoutResult.ok) {
+          lines.push(`   FAIL: Could not switch to existing branch '${branchName}'.`)
+          lines.push("")
+          lines.push("Pre-flight FAILED.")
+          return lines.join("\n")
+        }
+        lines.push(`   PASS: Switched to existing branch '${branchName}'`)
+      } else {
+        const createResult = await run(["git", "checkout", "-b", branchName])
+        if (!createResult.ok) {
+          lines.push(`   FAIL: Could not create branch '${branchName}'.`)
+          lines.push(`   Error: ${createResult.out}`)
+          lines.push("")
+          lines.push("Pre-flight FAILED.")
+          return lines.join("\n")
+        }
+        lines.push(`   PASS: Created branch '${branchName}' from '${defaultBranch}'`)
+      }
+    }
+
+    lines.push("")
+    lines.push("=======================")
+    lines.push("Pre-flight PASSED. Ready to proceed.")
+    lines.push("")
+    lines.push(`Issue  : #${args.issue_number} -- ${issueTitle}`)
+    lines.push(`Branch : ${branchName || currentBranch}`)
+
+    return lines.join("\n")
+  },
+})

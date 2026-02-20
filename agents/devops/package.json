@@ -1,0 +1,6 @@
+{
+  "name": "opencode-devops",
+  "version": "0.1.0",
+  "description": "DevOps agent for OpenCode TUI - enforces issue-linked workflows with Podman, Terraform, and GCP support",
+  "dependencies": {}
+}
