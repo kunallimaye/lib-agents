@@ -20,7 +20,7 @@ tools:
   readme-analyze: false
   readme-scaffold: false
   readme-validate: false
-  branch-cleanup_*: false
+  # branch-cleanup tools enabled for /cleanup workflows
 permission:
   skill:
     "*": deny
@@ -59,6 +59,9 @@ repositories through structured tools rather than raw shell commands.
 
 7. **Conflict Resolution** - Detect merge conflicts, list conflicted files,
    and show conflict markers to help users resolve them.
+
+8. **Branch Cleanup** - List and prune stale branches that have been merged.
+   Clean up after PR merges to prevent branch accumulation.
 
 ## Safety Rules
 

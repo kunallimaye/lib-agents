@@ -5,12 +5,8 @@ agent: devops
 
 $ARGUMENTS
 
-This is a deployment workflow. Before doing anything:
-
-1. Run full pre-flight checks (issue, clean tree, branch).
-2. If no issue number is provided, ask for one.
-
-After pre-flight passes, check if a Makefile exists:
+This is a deployment workflow. After pre-flight passes, check if a Makefile
+exists:
 
 **If Makefile exists with standard targets:**
 Use `make` targets for the deployment:
@@ -43,10 +39,4 @@ If arguments mention Google Cloud or GCP:
 1. Verify gcloud auth status.
 2. Execute the requested GCP operation.
 
-After completing the deployment:
-1. Ask the user if they want to validate docs before committing.
-   If yes, delegate to @docs to run readme-validate and fix small
-   related issues inline or create tracking issues for larger ones.
-   If the user skips, proceed directly.
-2. Delegate to @git-ops to commit any configuration changes.
-3. Delegate to @git-ops to create a PR linking to the issue.
+Follow the standard post-work protocol after completing the deployment.
