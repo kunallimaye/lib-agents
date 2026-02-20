@@ -9,7 +9,23 @@ tools:
   write: false
   edit: false
   patch: false
+  # Disable tools not relevant to git-ops
+  scaffold_*: false
+  cloudbuild_*: false
+  podman_*: false
+  gcloud_*: false
+  terraform_*: false
+  troubleshoot_*: false
+  devops-preflight_*: false
+  readme-analyze: false
+  readme-scaffold: false
+  readme-validate: false
+  branch-cleanup_*: false
 permission:
+  skill:
+    "*": deny
+    git-pr-workflow: allow
+    git-release: allow
   bash:
     "*": deny
     "git *": allow

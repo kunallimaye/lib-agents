@@ -5,6 +5,10 @@ set -euo pipefail
 # lib-agents installer
 # Deploys agent packages to OpenCode config directories
 #
+# Resources (skills, tools, commands) are centralized in top-level directories
+# and ALL are installed unconditionally. Per-agent scoping is handled at runtime
+# via OpenCode's native permission: and tools: config in each agent.md.
+#
 # Usage:
 #   ./install.sh <agent-name>... [--project|--global|--link]
 #   ./install.sh --all [--project|--global|--link]
@@ -13,7 +17,7 @@ set -euo pipefail
 #   curl -fsSL https://raw.githubusercontent.com/kunallimaye/lib-agents/main/install.sh | bash -s -- git-ops docs
 #
 # Examples:
-#   ./install.sh git-ops                  # Install one agent to current project
+#   ./install.sh git-ops                  # Install agent + all shared resources
 #   ./install.sh git-ops docs --global    # Install multiple agents globally
 #   ./install.sh --all                    # Install all agents to current project
 #   ./install.sh --all --global           # Install all agents globally
@@ -26,6 +30,8 @@ TEMP_DIR=""
 # Resolve script location -- handles both local execution and piped via curl
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-/dev/null}")" 2>/dev/null && pwd || echo "")"
 AGENTS_DIR="${SCRIPT_DIR:+${SCRIPT_DIR}/agents}"
+REPO_ROOT="${SCRIPT_DIR}"
+SHARED_RESOURCES_INSTALLED=false
 
 # Colors
 RED='\033[0;31m'
@@ -65,6 +71,7 @@ ensure_agents_source() {
     exit 1
   fi
   AGENTS_DIR="${TEMP_DIR}/agents"
+  REPO_ROOT="${TEMP_DIR}"
   ok "Downloaded agent definitions to temp directory"
   echo ""
 }
@@ -184,6 +191,79 @@ check_prerequisites() {
   return 0
 }
 
+# Install ALL shared resources (tools, skills, commands) from centralized dirs.
+# Called once regardless of how many agents are installed.
+install_shared_resources() {
+  local target="$1"
+  local use_link="$2"
+
+  if [ "$SHARED_RESOURCES_INSTALLED" = true ]; then
+    return 0
+  fi
+
+  info "Installing shared resources..."
+  echo ""
+
+  # Create target directories
+  mkdir -p "${target}/tools"
+  mkdir -p "${target}/commands"
+
+  # Install ALL tools from top-level tools/
+  if [ -d "${REPO_ROOT}/tools" ]; then
+    for tool_file in "${REPO_ROOT}/tools"/*.ts; do
+      if [ -f "$tool_file" ]; then
+        local tool_name=$(basename "$tool_file")
+        local tool_dest="${target}/tools/${tool_name}"
+        if [ "$use_link" = true ]; then
+          ln -sf "$(realpath "$tool_file")" "$tool_dest"
+          ok "Linked tool -> ${tool_name}"
+        else
+          cp "$tool_file" "$tool_dest"
+          ok "Copied tool -> ${tool_name}"
+        fi
+      fi
+    done
+  fi
+
+  # Install ALL commands from top-level commands/
+  if [ -d "${REPO_ROOT}/commands" ]; then
+    for cmd_file in "${REPO_ROOT}/commands"/*.md; do
+      if [ -f "$cmd_file" ]; then
+        local cmd_name=$(basename "$cmd_file")
+        local cmd_dest="${target}/commands/${cmd_name}"
+        if [ "$use_link" = true ]; then
+          ln -sf "$(realpath "$cmd_file")" "$cmd_dest"
+          ok "Linked command -> ${cmd_name}"
+        else
+          cp "$cmd_file" "$cmd_dest"
+          ok "Copied command -> ${cmd_name}"
+        fi
+      fi
+    done
+  fi
+
+  # Install ALL skills from top-level skills/
+  if [ -d "${REPO_ROOT}/skills" ]; then
+    for skill_dir in "${REPO_ROOT}/skills"/*/; do
+      if [ -d "$skill_dir" ] && [ -f "${skill_dir}/SKILL.md" ]; then
+        local skill_name=$(basename "$skill_dir")
+        local skill_dest_dir="${target}/skills/${skill_name}"
+        mkdir -p "$skill_dest_dir"
+        if [ "$use_link" = true ]; then
+          ln -sf "$(realpath "${skill_dir}/SKILL.md")" "${skill_dest_dir}/SKILL.md"
+          ok "Linked skill -> ${skill_name}"
+        else
+          cp "${skill_dir}/SKILL.md" "${skill_dest_dir}/SKILL.md"
+          ok "Copied skill -> ${skill_name}"
+        fi
+      fi
+    done
+  fi
+
+  echo ""
+  SHARED_RESOURCES_INSTALLED=true
+}
+
 install_agent() {
   local agent_name="$1"
   local mode="$2"
@@ -193,32 +273,6 @@ install_agent() {
     err "Agent '${agent_name}' not found in ${AGENTS_DIR}/"
     info "Run '$(basename "$0") --list' to see available agents."
     exit 1
-  fi
-
-  # Check for dependencies (DEPENDS file in agent directory)
-  if [ -f "${agent_src}/DEPENDS" ]; then
-    while IFS= read -r dep || [ -n "$dep" ]; do
-      dep=$(echo "$dep" | xargs)  # trim whitespace
-      [ -z "$dep" ] && continue
-      [[ "$dep" == \#* ]] && continue  # skip comments
-
-      # Determine target to check if dependency is already installed
-      local dep_target
-      case "$mode" in
-        project) dep_target="$(pwd)/.opencode" ;;
-        global)  dep_target="${HOME}/.config/opencode" ;;
-      esac
-
-      if [ ! -f "${dep_target}/agents/${dep}.md" ]; then
-        info "Agent '${agent_name}' depends on '${dep}'. Installing dependency..."
-        install_agent "$dep" "$mode" "${3:-}"
-        echo ""
-        info "Continuing with ${agent_name} installation..."
-        echo ""
-      else
-        ok "Dependency '${dep}' already installed"
-      fi
-    done < "${agent_src}/DEPENDS"
   fi
 
   # Determine target directory
@@ -236,13 +290,30 @@ install_agent() {
       ;;
   esac
 
+  # Check for dependencies (DEPENDS file in agent directory)
+  if [ -f "${agent_src}/DEPENDS" ]; then
+    while IFS= read -r dep || [ -n "$dep" ]; do
+      dep=$(echo "$dep" | xargs)  # trim whitespace
+      [ -z "$dep" ] && continue
+      [[ "$dep" == \#* ]] && continue  # skip comments
+
+      if [ ! -f "${target}/agents/${dep}.md" ]; then
+        info "Agent '${agent_name}' depends on '${dep}'. Installing dependency..."
+        install_agent "$dep" "$mode" "${3:-}"
+        echo ""
+        info "Continuing with ${agent_name} installation..."
+        echo ""
+      else
+        ok "Dependency '${dep}' already installed"
+      fi
+    done < "${agent_src}/DEPENDS"
+  fi
+
   info "Installing ${agent_name} to ${target}/"
   echo ""
 
   # Create target directories
   mkdir -p "${target}/agents"
-  mkdir -p "${target}/tools"
-  mkdir -p "${target}/commands"
 
   local use_link=false
   if [ "${3:-}" = "link" ]; then
@@ -259,63 +330,11 @@ install_agent() {
     local agent_dest="${target}/agents/${agent_name}.md"
     if [ "$use_link" = true ]; then
       ln -sf "$(realpath "${agent_src}/agent.md")" "$agent_dest"
-      ok "Linked agent definition -> ${agent_dest}"
+      ok "Linked agent definition -> ${agent_name}.md"
     else
       cp "${agent_src}/agent.md" "$agent_dest"
-      ok "Copied agent definition -> ${agent_dest}"
+      ok "Copied agent definition -> ${agent_name}.md"
     fi
-  fi
-
-  # Install tools
-  if [ -d "${agent_src}/tools" ]; then
-    for tool_file in "${agent_src}/tools"/*.ts; do
-      if [ -f "$tool_file" ]; then
-        local tool_name=$(basename "$tool_file")
-        local tool_dest="${target}/tools/${tool_name}"
-        if [ "$use_link" = true ]; then
-          ln -sf "$(realpath "$tool_file")" "$tool_dest"
-          ok "Linked tool -> ${tool_dest}"
-        else
-          cp "$tool_file" "$tool_dest"
-          ok "Copied tool -> ${tool_dest}"
-        fi
-      fi
-    done
-  fi
-
-  # Install commands
-  if [ -d "${agent_src}/commands" ]; then
-    for cmd_file in "${agent_src}/commands"/*.md; do
-      if [ -f "$cmd_file" ]; then
-        local cmd_name=$(basename "$cmd_file")
-        local cmd_dest="${target}/commands/${cmd_name}"
-        if [ "$use_link" = true ]; then
-          ln -sf "$(realpath "$cmd_file")" "$cmd_dest"
-          ok "Linked command -> ${cmd_dest}"
-        else
-          cp "$cmd_file" "$cmd_dest"
-          ok "Copied command -> ${cmd_dest}"
-        fi
-      fi
-    done
-  fi
-
-  # Install skills
-  if [ -d "${agent_src}/skills" ]; then
-    for skill_dir in "${agent_src}/skills"/*/; do
-      if [ -d "$skill_dir" ] && [ -f "${skill_dir}/SKILL.md" ]; then
-        local skill_name=$(basename "$skill_dir")
-        local skill_dest_dir="${target}/skills/${skill_name}"
-        mkdir -p "$skill_dest_dir"
-        if [ "$use_link" = true ]; then
-          ln -sf "$(realpath "${skill_dir}/SKILL.md")" "${skill_dest_dir}/SKILL.md"
-          ok "Linked skill -> ${skill_dest_dir}/SKILL.md"
-        else
-          cp "${skill_dir}/SKILL.md" "${skill_dest_dir}/SKILL.md"
-          ok "Copied skill -> ${skill_dest_dir}/SKILL.md"
-        fi
-      fi
-    done
   fi
 
   # Install/merge package.json if it exists
@@ -334,15 +353,18 @@ install_agent() {
     fi
   fi
 
+  # Install ALL shared resources (tools, skills, commands) once
+  install_shared_resources "$target" "$use_link"
+
   echo ""
-  ok "Installation complete!"
+  ok "Agent '${agent_name}' installed!"
   echo ""
   info "Usage in OpenCode TUI:"
   echo "    @${agent_name}  - Invoke the agent directly"
 
-  # List installed commands for this agent
-  if [ -d "${agent_src}/commands" ]; then
-    for cmd_file in "${agent_src}/commands"/*.md; do
+  # List installed commands
+  if [ -d "${REPO_ROOT}/commands" ]; then
+    for cmd_file in "${REPO_ROOT}/commands"/*.md; do
       if [ -f "$cmd_file" ]; then
         local cmd_name=$(basename "$cmd_file" .md)
         local cmd_desc=$(grep "^description:" "$cmd_file" | head -1 | sed 's/^description:\s*//')

@@ -5,6 +5,30 @@ description: >
   implementation paths. Delegates actionable ideas to git-ops as issues.
 mode: subagent
 temperature: 0.7
+tools:
+  # Disable all custom tools — ideate delegates to @git-ops and @docs
+  scaffold_*: false
+  cloudbuild_*: false
+  podman_*: false
+  gcloud_*: false
+  terraform_*: false
+  troubleshoot_*: false
+  devops-preflight_*: false
+  branch-cleanup_*: false
+  gh-issue_*: false
+  gh-pr_*: false
+  gh-release_*: false
+  gh-review_*: false
+  git-branch_*: false
+  git-commit_*: false
+  git-conflict_*: false
+  git-ops-init: false
+  git-ops-init_*: false
+  git-status_*: false
+  readme-analyze: false
+  readme-scaffold: false
+  readme-validate: false
+  skill: false
 permission:
   bash:
     "*": deny

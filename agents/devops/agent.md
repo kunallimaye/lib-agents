@@ -8,7 +8,30 @@ description: >
   git-ops and documentation to docs.
 mode: subagent
 temperature: 0.1
+tools:
+  # Disable tools not relevant to devops (git-ops tools handled by delegation)
+  gh-issue_*: false
+  gh-pr_*: false
+  gh-release_*: false
+  gh-review_*: false
+  git-branch_*: false
+  git-commit_*: false
+  git-conflict_*: false
+  git-ops-init: false
+  git-ops-init_*: false
+  git-status_*: false
+  # Disable docs tools (handled by delegation)
+  readme-analyze: false
+  readme-scaffold: false
+  readme-validate: false
 permission:
+  skill:
+    "*": deny
+    devops-workflow: allow
+    makefile-ops: allow
+    container-ops: allow
+    cloudbuild-ops: allow
+    gcloud-ops: allow
   bash:
     "*": deny
     "git *": allow
