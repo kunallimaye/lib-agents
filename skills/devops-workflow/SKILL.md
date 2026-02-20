@@ -91,12 +91,13 @@ Use conventional commits: `type(scope): description`
 
 ## Post-merge Cleanup
 
-After a PR is merged, clean up to prevent branch accumulation:
+After a PR is merged, clean up to prevent branch accumulation.
+Use the `/cleanup` command to list and prune stale merged branches:
 
 1. Switch to default branch: `git checkout main`
 2. Pull latest: `git pull`
 3. Delete local branch: `git branch -d <branch>`
 4. Prune remote refs: `git fetch --prune`
 
-For bulk cleanup, use the `/cleanup` command to find and remove all
-stale merged branches at once.
+This is a separate step from the post-work protocol. Do NOT run cleanup
+immediately after PR creation -- wait until the PR is merged.

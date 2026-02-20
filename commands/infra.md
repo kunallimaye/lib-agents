@@ -5,12 +5,7 @@ agent: devops
 
 $ARGUMENTS
 
-This is an infrastructure management workflow. Before doing anything:
-
-1. Run full pre-flight checks (issue, clean tree, branch).
-2. If no issue number is provided, ask for one.
-
-After pre-flight passes:
+This is an infrastructure management workflow.
 
 If no specific arguments are provided:
 1. Check if Terraform is initialized (look for .terraform directory).
@@ -35,10 +30,4 @@ If arguments mention GCP resources:
 2. Perform the requested infrastructure operation.
 3. Show the results.
 
-After making infrastructure changes:
-1. Ask the user if they want to validate docs before committing.
-   If yes, delegate to @docs to run readme-validate and fix small
-   related issues inline or create tracking issues for larger ones.
-   If the user skips, proceed directly.
-2. Delegate to @git-ops to commit any Terraform file changes.
-3. Delegate to @git-ops to create a PR linking to the issue.
+Follow the standard post-work protocol after making infrastructure changes.

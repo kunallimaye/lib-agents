@@ -1,6 +1,6 @@
 ---
 description: List and prune stale git branches that have been merged
-agent: devops
+agent: git-ops
 ---
 
 $ARGUMENTS
