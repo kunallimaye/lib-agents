@@ -64,6 +64,9 @@ Pre-flight Checks (issue, clean tree, branch)
 Work Execution (containers, infra, troubleshooting)
   |
   v
+Test Validation (mandatory — PASS / FAIL / WARN)
+  |
+  v
 Stage & Commit (via @git-ops, conventional commit format)
   |
   v
@@ -79,6 +82,39 @@ Post-merge Cleanup
   - Delete local feature branch
   - git fetch --prune
 ```
+
+## Test Validation
+
+Test validation is a **mandatory** step between work execution and commit.
+It runs automatically via the `validate_tests` tool and MUST NOT be silently
+skipped.
+
+### Detection Priority
+
+The tool searches for test infrastructure in this order:
+
+1. `make local-test` — Makefile target (preferred, uses `scripts/local.sh test`)
+2. `make test` — Fallback Makefile target
+3. **Auto-detect** — Infers test command from project type (e.g., `npm test`,
+   `go test ./...`, `python3 -m pytest`, `cargo test`)
+
+### Outcomes
+
+| Result | Meaning | Action |
+|--------|---------|--------|
+| **PASS** | Tests ran and passed | Proceed to commit |
+| **FAIL** | Tests ran and failed | Show output. User must explicitly confirm to skip. |
+| **WARN** | No test infrastructure found | User must explicitly confirm to proceed. Suggest tracking issue. |
+
+### Skip Override Rules
+
+- The user **CAN** skip test validation, but **MUST** explicitly confirm.
+- The agent **MUST NOT** silently skip or auto-confirm on behalf of the user.
+- If tests fail, the prompt must include: "Tests failed. Do you want to skip
+  test validation and commit anyway? This is not recommended."
+- If no tests exist, the prompt must include: "No test infrastructure was
+  found. Do you want to proceed without test validation?"
+- Skipping should be the exception, not the norm.
 
 ## Commit Message Convention
 
