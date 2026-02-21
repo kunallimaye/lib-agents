@@ -1,0 +1,34 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "agent": {
+    "build": {
+      "prompt": "{file:.opencode/prompts/build.md}",
+      "tools": {
+        "gh-issue_*": false,
+        "gh-pr_*": false,
+        "gh-release_*": false,
+        "gh-review_*": false,
+        "git-branch_*": false,
+        "git-commit_*": false,
+        "git-conflict_*": false,
+        "git-ops-init": false,
+        "git-ops-init_*": false,
+        "git-status_*": false,
+        "scaffold_*": false,
+        "cloudbuild_*": false,
+        "podman_*": false,
+        "gcloud_*": false,
+        "terraform_*": false,
+        "troubleshoot_*": false,
+        "devops-preflight_*": false,
+        "branch-cleanup_*": false,
+        "readme-analyze": false,
+        "readme-scaffold": false,
+        "readme-validate": false
+      }
+    },
+    "plan": {
+      "prompt": "{file:.opencode/prompts/plan.md}"
+    }
+  }
+}
