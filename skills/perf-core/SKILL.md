@@ -87,4 +87,5 @@ language-specific skill for concrete tooling:
 | Language | Skill | Coverage |
 |----------|-------|----------|
 | Go | `perf-go` | pprof, testing.B, benchstat, GC tuning |
+| Rust | `perf-rust` | criterion, divan, cargo flamegraph, LLVM codegen |
 | TypeScript / Node.js | `perf-typescript` | V8 profiling, clinic.js, vitest bench |
