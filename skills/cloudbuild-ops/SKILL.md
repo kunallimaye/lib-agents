@@ -208,3 +208,14 @@ gcloud builds triggers run TRIGGER_ID --branch=main
 | Image push fails | Verify Artifact Registry repo exists and SA has `artifactregistry.admin` |
 | Substitution not resolved | Ensure variable starts with `_` and is declared in `substitutions` |
 | Build timeout | Increase `timeout` in `options` (default: 10 minutes) |
+
+## Agent Integration
+
+- Terraform runs via Cloud Build, not locally. Cloud Build is the execution
+  environment for all infrastructure changes.
+- Cloud Build configs and Terraform modules live in `cicd/`.
+- NEVER run `terraform apply` or `terraform destroy` without first showing
+  the plan output and getting user confirmation.
+- NEVER submit Cloud Build jobs that run `terraform apply` without user
+  confirmation.
+- ALWAYS show plan output before any apply operation.

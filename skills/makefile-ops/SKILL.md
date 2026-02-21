@@ -178,3 +178,12 @@ Must exclude:
   variables. Never hardcode credentials.
 - **Skipping `set -euo pipefail`** -- Always fail fast. Silent failures
   cause cascading problems.
+
+## Agent Integration
+
+- All operational tasks go through `make` targets. If a project has no
+  Makefile, offer to scaffold one first using the `scaffold` tool.
+- Detect the project type automatically and tailor all generated files.
+- Scaffolding generates Makefile, modular scripts in `scripts/`, container
+  files, Cloud Build configs, and Terraform modules -- all in `cicd/`.
+- Use the `scaffold` tool directly. Do not delegate scaffolding to other agents.

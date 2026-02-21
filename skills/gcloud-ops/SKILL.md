@@ -193,3 +193,9 @@ provider "google" {
 - Use `terraform import` to bring existing resources under management
 - Store state in a GCS backend: `terraform { backend "gcs" { bucket = "..." } }`
 - Use workspaces for environment separation (dev/staging/prod)
+
+## Agent Integration
+
+- NEVER modify IAM policies without showing the diff and getting user
+  confirmation.
+- ALWAYS show what will change before executing destructive GCP operations.

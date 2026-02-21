@@ -120,3 +120,10 @@ podman pod rm mystack
 | Container won't start | Check logs: `podman logs <container>` |
 | Port already in use | Find process: `ss -tlnp sport = :<port>` |
 | Disk space full | Clean up: `podman system prune -a --volumes` |
+
+## Agent Integration
+
+- Build, run, and manage containers using Podman (not Docker).
+- Container build files live in `cicd/`, not at the project root.
+- NEVER delete containers, images, or volumes without user confirmation.
+- ALWAYS show what will change before executing destructive container operations.
