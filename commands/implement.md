@@ -5,6 +5,10 @@ agent: devops
 
 Implement issue #$ARGUMENTS
 
+NOTE: If $ARGUMENTS is empty, contains a non-numeric value, or references
+conversation context (e.g., "the issue we discussed"), STOP and ask the
+user for a specific issue number.
+
 1. Run full pre-flight checks for the issue
 2. Read the issue and find the implementation plan (look for a comment
    containing "## Implementation Plan")
