@@ -223,17 +223,87 @@ export const check_branch = tool({
   },
 })
 
+export const check_plan = tool({
+  description:
+    "Check if an implementation plan has been posted as a comment on the " +
+    "GitHub issue. Looks for a comment containing '## Implementation Plan'. " +
+    "Returns PASS if found, WARN if not found.",
+  args: {
+    number: tool.schema.number().describe("GitHub issue number to check"),
+  },
+  async execute(args) {
+    if (args.number <= 0) return "FAIL: Issue number must be a positive integer."
+
+    const result = await run([
+      "gh",
+      "issue",
+      "view",
+      String(args.number),
+      "--json",
+      "comments",
+    ])
+
+    if (!result.ok) {
+      return `FAIL: Could not fetch comments for issue #${args.number}. Error: ${result.out}`
+    }
+
+    try {
+      const data = JSON.parse(result.out)
+      const comments: Array<{
+        body: string
+        author: { login: string }
+        createdAt: string
+      }> = data.comments || []
+
+      for (const comment of comments) {
+        if (comment.body.includes("## Implementation Plan")) {
+          const date = comment.createdAt
+            ? new Date(comment.createdAt).toISOString().slice(0, 10)
+            : "unknown"
+          return [
+            `PASS: Implementation plan found on issue #${args.number}`,
+            `  Author : ${comment.author?.login || "unknown"}`,
+            `  Date   : ${date}`,
+          ].join("\n")
+        }
+      }
+
+      return [
+        `WARN: No implementation plan found on issue #${args.number}`,
+        "",
+        `Searched ${comments.length} comment(s) for a comment containing "## Implementation Plan".`,
+        "",
+        "Options:",
+        "  1. Create and post a plan now (research codebase, draft plan, post as comment)",
+        "  2. Skip plan check (requires explicit user confirmation)",
+        "",
+        "The user MUST explicitly confirm before proceeding without a plan.",
+      ].join("\n")
+    } catch {
+      return `FAIL: Could not parse comments for issue #${args.number}. Raw: ${result.out}`
+    }
+  },
+})
+
 export const full_preflight = tool({
   description:
     "Run all pre-flight checks in sequence: verify issue exists, check for " +
-    "clean working tree, and create/verify dedicated branch. Returns a " +
-    "consolidated report. This is the preferred way to run pre-flight checks.",
+    "clean working tree, create/verify dedicated branch, and check for an " +
+    "implementation plan on the issue. Returns a consolidated report. " +
+    "This is the preferred way to run pre-flight checks.",
   args: {
     issue_number: tool.schema.number().describe("GitHub issue number"),
     type: tool.schema
       .enum(["feature", "fix", "chore", "docs", "refactor", "test"])
       .optional()
       .describe("Branch type prefix (default: feature)"),
+    skip_plan_check: tool.schema
+      .boolean()
+      .optional()
+      .describe(
+        "Skip the implementation plan check (default: false). " +
+        "Set to true for trivial issues where a plan is not needed.",
+      ),
   },
   async execute(args) {
     const lines: string[] = [
@@ -386,8 +456,79 @@ export const full_preflight = tool({
     }
 
     lines.push("")
+
+    // 4. Check for implementation plan
+    lines.push("4. Plan Check")
+    lines.push("   ----------")
+
+    if (args.skip_plan_check) {
+      lines.push("   SKIP: Plan check skipped by user.")
+      lines.push("")
+    } else {
+      const commentsResult = await run([
+        "gh",
+        "issue",
+        "view",
+        String(args.issue_number),
+        "--json",
+        "comments",
+      ])
+
+      let hasPlan = false
+      let planAuthor = ""
+      let planDate = ""
+
+      if (commentsResult.ok) {
+        try {
+          const data = JSON.parse(commentsResult.out)
+          const comments: Array<{
+            body: string
+            author: { login: string }
+            createdAt: string
+          }> = data.comments || []
+
+          for (const comment of comments) {
+            if (comment.body.includes("## Implementation Plan")) {
+              hasPlan = true
+              planAuthor = comment.author?.login || "unknown"
+              planDate = comment.createdAt
+                ? new Date(comment.createdAt).toISOString().slice(0, 10)
+                : "unknown"
+              break
+            }
+          }
+        } catch {
+          // If we can't parse comments, treat as no plan found
+        }
+      }
+
+      if (hasPlan) {
+        lines.push(
+          `   PASS: Implementation plan found on issue #${args.issue_number}`,
+        )
+        lines.push(`   Author: ${planAuthor}  |  Date: ${planDate}`)
+      } else {
+        lines.push(
+          `   WARN: No implementation plan found on issue #${args.issue_number}`,
+        )
+        lines.push(
+          "   Post a plan comment with '## Implementation Plan' header before starting work,",
+        )
+        lines.push(
+          "   or confirm to proceed without one.",
+        )
+      }
+      lines.push("")
+    }
+
+    // Determine overall result
+    const hasWarning = lines.some((l) => l.includes("WARN:"))
+    const overallResult = hasWarning
+      ? "Pre-flight PASSED with warnings. Review warnings before proceeding."
+      : "Pre-flight PASSED. Ready to proceed."
+
     lines.push("=======================")
-    lines.push("Pre-flight PASSED. Ready to proceed.")
+    lines.push(overallResult)
     lines.push("")
     lines.push(`Issue  : #${args.issue_number} -- ${issueTitle}`)
     lines.push(`Branch : ${branchName || currentBranch}`)
