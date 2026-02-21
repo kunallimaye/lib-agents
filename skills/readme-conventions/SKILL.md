@@ -120,3 +120,26 @@ cargo build
 cargo run
 \```
 ```
+
+## README Workflow
+
+### Analysis Approach
+
+When analyzing a project for README generation, examine:
+
+1. Package manifests -- `package.json`, `go.mod`, `Cargo.toml`,
+   `pyproject.toml`, `requirements.txt`, `pom.xml`, `build.gradle`
+2. Entry points -- `main.*`, `index.*`, `app.*`, `src/`
+3. Build/run scripts -- `Makefile`, `Dockerfile`, `docker-compose.yml`, `scripts/`
+4. Existing documentation -- current README, CONTRIBUTING, `docs/`
+5. Git history -- recent activity and project direction
+6. CI configuration -- `.github/workflows/`, `.gitlab-ci.yml`
+
+### Agent Integration
+
+- Focus exclusively on README.md files for documentation.
+- When generating README, follow the minimalist structure template above.
+- When validating README, check against the actual project state. Identify
+  stale instructions, missing prerequisites, or broken commands.
+- Do not add TODO comments or task lists to README. Delegate TODOs to
+  GitHub issues via `@git-ops`.
