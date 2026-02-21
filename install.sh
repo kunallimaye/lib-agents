@@ -83,25 +83,8 @@ get_source_commit() {
 # ============================================================================
 # Manifest infrastructure
 # ============================================================================
-MANIFEST_FILE=""
 declare -a MANIFEST_ENTRIES=()
 declare -a INSTALLED_AGENTS_LIST=()
-
-# Classify a file's tier based on its destination path
-classify_tier() {
-  local filepath="$1"
-  case "$filepath" in
-    */AGENTS.md|*/opencode.json|*/package.json)
-      echo "user"
-      ;;
-    */agents/*.md)
-      echo "agent"
-      ;;
-    *)
-      echo "shared"
-      ;;
-  esac
-}
 
 # Record a file installation into the manifest entries array
 record_file() {
@@ -389,15 +372,15 @@ show_status() {
     if [ "$current_hash" = "MISSING" ]; then
       status_icon="${RED}✗${NC}"
       status_text="missing"
-      ((count_missing++))
+      count_missing=$((count_missing + 1))
     elif [ "$current_hash" = "$stored_hash" ]; then
       status_icon="${GREEN}✓${NC}"
       status_text="clean"
-      ((count_clean++))
+      count_clean=$((count_clean + 1))
     else
       status_icon="${YELLOW}✎${NC}"
       status_text="modified"
-      ((count_modified++))
+      count_modified=$((count_modified + 1))
     fi
 
     # Shorten path for display
@@ -495,15 +478,6 @@ classify_file_action() {
     echo "already-current"
   else
     echo "conflict"
-  fi
-}
-
-# Show diff between two files
-show_diff() {
-  local file_a="$1"
-  local file_b="$2"
-  if command -v diff &>/dev/null; then
-    diff --color=auto -u "$file_a" "$file_b" 2>/dev/null || true
   fi
 }
 
@@ -668,7 +642,7 @@ update_installation() {
     if [ -z "${MANIFEST_HASHES[$dest]+x}" ]; then
       # File not in manifest — it's new
       FILE_ACTIONS["$dest"]="new"
-      ((count_new++))
+      count_new=$((count_new + 1))
     else
       local installed_hash="${MANIFEST_HASHES[$dest]}"
       local current_hash
@@ -677,10 +651,10 @@ update_installation() {
       action=$(classify_file_action "$installed_hash" "$current_hash" "$new_hash")
       FILE_ACTIONS["$dest"]="$action"
       case "$action" in
-        unchanged) ((count_unchanged++)) ;;
-        auto-update) ((count_auto++)) ;;
-        already-current) ((count_current++)) ;;
-        conflict) ((count_conflict++)) ;;
+        unchanged) count_unchanged=$((count_unchanged + 1)) ;;
+        auto-update) count_auto=$((count_auto + 1)) ;;
+        already-current) count_current=$((count_current + 1)) ;;
+        conflict) count_conflict=$((count_conflict + 1)) ;;
       esac
     fi
   done
@@ -688,10 +662,23 @@ update_installation() {
   # Check for files removed upstream
   for path in "${!MANIFEST_HASHES[@]}"; do
     if [ -z "${NEW_FILES[$path]+x}" ]; then
-      # Only flag if the type is included in the filter
+      # Determine the file's resource type from its path
+      local file_type=""
+      case "$path" in
+        */tools/*)    file_type="tools" ;;
+        */commands/*) file_type="commands" ;;
+        */skills/*)   file_type="skills" ;;
+        */prompts/*)  file_type="prompts" ;;
+        */agents/*)   file_type="agents" ;;
+        *)            file_type="configs" ;;
+      esac
+      # Skip files whose type is outside the --only filter scope
+      if [ -n "$only_filter" ] && ! should_include_type "$file_type" "$only_filter"; then
+        continue
+      fi
       local tier="${MANIFEST_TIERS[$path]}"
       FILE_ACTIONS["$path"]="removed-upstream"
-      ((count_removed++))
+      count_removed=$((count_removed + 1))
     fi
   done
 
@@ -873,6 +860,9 @@ update_installation() {
   } > "$tmp_manifest"
   mv "$tmp_manifest" "${target}/.lib-agents.lock"
 
+  # Apply sidecar convention after update
+  apply_sidecar_convention "$project_root"
+
   echo ""
   ok "Update complete. Manifest updated."
 }
@@ -886,6 +876,62 @@ should_include_type() {
   fi
   echo ",$filter," | grep -q ",$type," && return 0
   return 1
+}
+
+# ============================================================================
+# Sidecar convention: AGENTS.local.md and opencode.local.json
+# ============================================================================
+AGENTS_MD_MANAGED_COMMENT="<!-- lib-agents managed file. Add customizations to AGENTS.local.md -->"
+
+# Apply sidecar convention after install/update:
+# - Prepend managed-file comment to AGENTS.md
+# - Append AGENTS.local.md contents if it exists
+# - Warn about opencode.local.json (JSON deep merge is impractical in bash)
+apply_sidecar_convention() {
+  local project_root="$1"
+  local agents_md="${project_root}/AGENTS.md"
+
+  if [ ! -f "$agents_md" ]; then
+    return
+  fi
+
+  # Prepend managed-file comment if not already present
+  if ! head -1 "$agents_md" | grep -qF "lib-agents managed file"; then
+    local tmp_agents="${agents_md}.tmp"
+    {
+      echo "$AGENTS_MD_MANAGED_COMMENT"
+      cat "$agents_md"
+    } > "$tmp_agents"
+    mv "$tmp_agents" "$agents_md"
+  fi
+
+  # Append AGENTS.local.md if it exists
+  local local_agents="${project_root}/AGENTS.local.md"
+  if [ -f "$local_agents" ]; then
+    # Strip any previously appended local content (between markers)
+    local marker_start="<!-- BEGIN AGENTS.local.md -->"
+    local marker_end="<!-- END AGENTS.local.md -->"
+    if grep -qF "$marker_start" "$agents_md"; then
+      # Remove old local content between markers
+      sed -i "/$marker_start/,/$marker_end/d" "$agents_md"
+    fi
+    # Append local content with markers
+    {
+      echo ""
+      echo "$marker_start"
+      cat "$local_agents"
+      echo ""
+      echo "$marker_end"
+    } >> "$agents_md"
+    ok "Appended AGENTS.local.md customizations to AGENTS.md"
+  fi
+
+  # Warn about opencode.local.json
+  local local_opencode="${project_root}/opencode.local.json"
+  if [ -f "$local_opencode" ]; then
+    warn "opencode.local.json detected. JSON deep merge is not supported by the installer."
+    info "Please manually merge ${local_opencode} into ${project_root}/opencode.json"
+  fi
 }
 
 # ============================================================================
@@ -932,7 +978,7 @@ rollback_installation() {
     if [ -f "$backup_file" ]; then
       mkdir -p "$(dirname "$path")"
       cp "$backup_file" "$path"
-      ((restored++))
+      restored=$((restored + 1))
     fi
   done
 
@@ -1025,6 +1071,16 @@ Update & status:
   $(basename "$0") --update --only=skills   # Update only skills
   $(basename "$0") --update --agent=git-ops # Update only git-ops agent
   $(basename "$0") --rollback               # Restore from latest backup
+
+Sidecar convention:
+  AGENTS.local.md   If this file exists in the project root, its contents are
+                    appended to AGENTS.md after every install/update. Use it to
+                    add project-specific agent instructions without modifying
+                    the managed AGENTS.md file.
+  opencode.local.json
+                    If this file exists, the installer warns you to manually
+                    merge it into opencode.json (JSON deep merge in bash is
+                    not supported).
 EOF
   exit 0
 }
@@ -1335,6 +1391,9 @@ install_agent() {
       fi
     fi
   done
+
+  # Apply sidecar convention (AGENTS.local.md, opencode.local.json)
+  apply_sidecar_convention "$project_root"
 
   echo ""
   ok "Agent '${agent_name}' installed!"
