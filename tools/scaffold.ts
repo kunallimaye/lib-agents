@@ -225,6 +225,8 @@ function generateLocalSh(pt: ProjectType): string {
   }
 
   const b = builds[pt]
+  // NOTE: \${b.*} interpolations in the template below are JS template expressions,
+  // not bash variables — do NOT escape them with a backslash.
   return `#!/usr/bin/env bash
 # Local development operations
 # Usage: bash scripts/local.sh {init|clean|build|run|test|lint}
@@ -250,17 +252,17 @@ ${b.build}
 
 run() {
   log_info "Running locally..."
-\${b.run}
+${b.run}
 }
 
 test() {
   log_info "Running tests..."
-\${b.test}
+${b.test}
 }
 
 lint() {
   log_info "Running linter..."
-\${b.lint}
+${b.lint}
 }
 
 # ─── Dispatch ─────────────────────────────────────────────────────────
