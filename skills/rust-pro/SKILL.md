@@ -174,4 +174,5 @@ request. Add `miri` for crates with unsafe code.
 | Domain | Skill | Coverage |
 |---|---|---|
 | Performance analysis | `perf-core` | Profiling methodology, flame graphs, benchmarking workflow |
+| Rust performance | `perf-rust` | Profiling, benchmarking, codegen flags, zero-allocation patterns |
 | Container builds | `container-ops` | Multi-stage Dockerfile for Rust, image optimization |
