@@ -49,6 +49,58 @@ cd /path/to/your/project
 /path/to/lib-agents/install.sh git-ops --link
 ```
 
+## Updating
+
+Check your installation status and available updates:
+
+```bash
+./install.sh --status
+```
+
+Preview what an update would change (no modifications):
+
+```bash
+./install.sh --update --dry-run
+```
+
+Update all files (creates automatic backup first):
+
+```bash
+./install.sh --update
+```
+
+Update only specific resource types or a single agent:
+
+```bash
+./install.sh --update --only=skills,tools
+./install.sh --update --agent=git-ops
+```
+
+Rollback to the previous version:
+
+```bash
+./install.sh --rollback
+```
+
+Remote update via curl:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kunallimaye/lib-agents/main/install.sh | bash -s -- --status
+curl -fsSL https://raw.githubusercontent.com/kunallimaye/lib-agents/main/install.sh | bash -s -- --update
+curl -fsSL https://raw.githubusercontent.com/kunallimaye/lib-agents/main/install.sh | bash -s -- --update --dry-run
+```
+
+### Sidecar convention
+
+Create `AGENTS.local.md` in your project root for customizations that persist across updates — its contents are automatically appended to `AGENTS.md` after every install or update.
+
+### How updates work
+
+- **Manifest lockfile** (`.opencode/.lib-agents.lock`) tracks installed version, files, and SHA-256 hashes
+- **Unmodified files** are auto-updated; **modified files** prompt for conflict resolution
+- **User-owned files** (`AGENTS.md`, `opencode.json`) are never auto-overwritten
+- **Backups** are saved to `.opencode/.backup/<timestamp>/` before each update (last 3 kept)
+
 ## How It Works
 
 Each agent package in `agents/` contains:
