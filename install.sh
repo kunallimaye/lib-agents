@@ -260,6 +260,24 @@ install_shared_resources() {
     done
   fi
 
+  # Install ALL prompts from top-level prompts/
+  if [ -d "${REPO_ROOT}/prompts" ]; then
+    mkdir -p "${target}/prompts"
+    for prompt_file in "${REPO_ROOT}/prompts"/*.md; do
+      if [ -f "$prompt_file" ]; then
+        local prompt_name=$(basename "$prompt_file")
+        local prompt_dest="${target}/prompts/${prompt_name}"
+        if [ "$use_link" = true ]; then
+          ln -sf "$(realpath "$prompt_file")" "$prompt_dest"
+          ok "Linked prompt -> ${prompt_name}"
+        else
+          cp "$prompt_file" "$prompt_dest"
+          ok "Copied prompt -> ${prompt_name}"
+        fi
+      fi
+    done
+  fi
+
   echo ""
   SHARED_RESOURCES_INSTALLED=true
 }
@@ -353,8 +371,34 @@ install_agent() {
     fi
   fi
 
-  # Install ALL shared resources (tools, skills, commands) once
+  # Install ALL shared resources (tools, skills, commands, prompts) once
   install_shared_resources "$target" "$use_link"
+
+  # Install project-root config files (AGENTS.md, opencode.json)
+  # These go to the project root, not inside .opencode/
+  local project_root
+  if [ "$mode" = "project" ]; then
+    project_root="$(pwd)"
+  elif [ "$mode" = "global" ]; then
+    project_root="${HOME}/.config/opencode"
+  fi
+
+  for root_file in AGENTS.md opencode.json; do
+    if [ -f "${REPO_ROOT}/${root_file}" ]; then
+      local root_dest="${project_root}/${root_file}"
+      if [ -f "$root_dest" ]; then
+        warn "${root_file} already exists at ${root_dest}. Skipping."
+      else
+        if [ "$use_link" = true ]; then
+          ln -sf "$(realpath "${REPO_ROOT}/${root_file}")" "$root_dest"
+          ok "Linked ${root_file} -> project root"
+        else
+          cp "${REPO_ROOT}/${root_file}" "$root_dest"
+          ok "Copied ${root_file} -> project root"
+        fi
+      fi
+    fi
+  done
 
   echo ""
   ok "Agent '${agent_name}' installed!"
