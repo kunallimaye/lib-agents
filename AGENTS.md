@@ -17,8 +17,15 @@ Task tool instead of handling these tasks directly.
 
 1. **ALWAYS delegate** — Do not attempt tasks in the delegation table directly.
    Use the Task tool to invoke the specialist agent.
-2. **Provide full context** — When delegating, pass the user's complete request
-   and any relevant context (file paths, issue numbers, branch names).
+2. **Provide full context** — Subagents start with a FRESH context and cannot
+   see the parent conversation's history. The Task tool prompt is the ONLY
+   information they receive. When delegating:
+   - Never use references like "the above", "what we discussed", or "the two
+     issues" — always inline the full details
+   - Include issue numbers, file paths, branch names, and specifications
+   - Summarize any decisions or conclusions from the conversation
+   - Include relevant output from prior agent responses
+   - The subagent should be able to execute with ZERO prior context
 3. **Trust the specialist** — Do not second-guess or redo the specialist's work.
    Report their results back to the user.
 4. **Multi-step workflows** — If a task spans multiple domains (e.g., "fix this
