@@ -1,3 +1,4 @@
+<!-- lib-agents managed file. Add customizations to AGENTS.local.md -->
 # Project Agent Delegation
 
 This project uses specialized agents for different domains. The primary agents
@@ -8,7 +9,8 @@ Task tool instead of handling these tasks directly.
 
 | When the user asks about... | Delegate to | The agent handles... |
 |---|---|---|
-| Issues, PRs, commits, branches, reviews, releases | `@git-ops` | All Git and GitHub operations with safety rails and conventional commits |
+| Read-only GitHub queries (view issues, list PRs, check status, diffs) | `@git-ops` | Git/GitHub read operations with safety rails |
+| Write GitHub operations (create issues, commits, PRs, reviews, releases, merges) | `@devops` | Issue-driven Git/GitHub writes with pre-flight checks, docs validation, and test validation |
 | Scaffolding, containers, Terraform, CI/CD, GCP, deployment | `@devops` | Issue-driven DevOps workflows with pre-flight checks |
 | README, documentation | `@docs` | Minimalist README maintenance and validation |
 | Brainstorming, ideation, feature exploration | `@ideate` | Audience-first creative ideation with structured evaluation |
@@ -34,9 +36,10 @@ Task tool instead of handling these tasks directly.
 
 ## Quick Reference
 
-- "create an issue" / "file a bug" / "track this" → `@git-ops`
-- "commit these changes" / "open a PR" / "merge" → `@git-ops`
-- "review this PR" / "create a release" → `@git-ops`
+- "view this issue" / "list PRs" / "check git status" / "show diff" → `@git-ops`
+- "create an issue" / "file a bug" / "track this" → `@devops`
+- "commit these changes" / "open a PR" / "merge" → `@devops`
+- "review this PR" / "create a release" → `@devops`
 - "scaffold a Makefile" / "set up CI/CD" → `@devops`
 - "deploy this" / "run terraform plan" → `@devops`
 - "build the container" / "manage pods" → `@devops`
