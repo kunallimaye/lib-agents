@@ -14,6 +14,7 @@ Task tool instead of handling these tasks directly.
 | Scaffolding, containers, Terraform, CI/CD, GCP, deployment | `@devops` | Issue-driven DevOps workflows with pre-flight checks |
 | README, documentation | `@docs` | Minimalist README maintenance and validation |
 | Brainstorming, ideation, feature exploration | `@ideate` | Audience-first creative ideation with structured evaluation |
+| Testing hypotheses, experiments, prototyping, reproducing bugs | `@pilot` | Isolated experimentation in ephemeral workspaces |
 
 ## Rules
 
@@ -47,3 +48,6 @@ Task tool instead of handling these tasks directly.
 - "validate documentation" / "check the README" → `@docs`
 - "brainstorm ideas" / "explore features" → `@ideate`
 - "what should we build?" / "creative session" → `@ideate`
+- "test this hypothesis" / "try this out" / "experiment" → `@pilot`
+- "reproduce this bug" / "prototype this" / "does X work?" → `@pilot`
+- "clean up workspaces" / "pilot clean" → `@pilot`
