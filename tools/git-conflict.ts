@@ -1,12 +1,20 @@
 import { tool } from "@opencode-ai/plugin"
 import { ensureEnvironment } from "./git-ops-init"
 
-async function gitRun(args: string[]): Promise<string> {
+const WORKSPACE_DESC =
+  "Path to an agent workspace (clone). When provided, git commands run " +
+  "inside the workspace instead of the main working tree. Use the path " +
+  "returned by agent_workspace_create."
+
+async function gitRun(args: string[], workspace?: string): Promise<string> {
   const envErr = await ensureEnvironment()
   if (envErr) return envErr
 
   try {
-    const result = await Bun.$`git ${args}`.text()
+    const cmd = workspace
+      ? Bun.$`git -C ${workspace} ${args}`
+      : Bun.$`git ${args}`
+    const result = await cmd.text()
     return result.trim()
   } catch (e: any) {
     const stderr = e?.stderr?.toString?.()?.trim() || ""
@@ -18,10 +26,15 @@ export const detect = tool({
   description:
     "Detect merge conflicts in the working tree and list all conflicted files. " +
     "Returns conflict status and the list of files with conflicts.",
-  args: {},
-  async execute() {
+  args: {
+    workspace: tool.schema
+      .string()
+      .optional()
+      .describe(WORKSPACE_DESC),
+  },
+  async execute(args) {
     // Check for unmerged paths
-    const result = await gitRun(["diff", "--name-only", "--diff-filter=U"])
+    const result = await gitRun(["diff", "--name-only", "--diff-filter=U"], args.workspace)
 
     if (!result || result === "") {
       return "No merge conflicts detected."
@@ -49,13 +62,20 @@ export const show = tool({
     path: tool.schema
       .string()
       .describe("Path to the file with conflicts"),
+    workspace: tool.schema
+      .string()
+      .optional()
+      .describe(WORKSPACE_DESC),
   },
   async execute(args) {
     const envErr = await ensureEnvironment()
     if (envErr) return envErr
 
     try {
-      const content = await Bun.$`cat ${args.path}`.text()
+      const filePath = args.workspace
+        ? `${args.workspace}/${args.path}`
+        : args.path
+      const content = await Bun.$`cat ${filePath}`.text()
       if (!content.includes("<<<<<<<")) {
         return `No conflict markers found in ${args.path}.`
       }
@@ -69,8 +89,13 @@ export const show = tool({
 export const abort_merge = tool({
   description:
     "Abort an in-progress merge and return to the pre-merge state.",
-  args: {},
-  async execute() {
-    return await gitRun(["merge", "--abort"])
+  args: {
+    workspace: tool.schema
+      .string()
+      .optional()
+      .describe(WORKSPACE_DESC),
+  },
+  async execute(args) {
+    return await gitRun(["merge", "--abort"], args.workspace)
   },
 })

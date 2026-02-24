@@ -1,8 +1,19 @@
 import { tool } from "@opencode-ai/plugin"
 
-async function run(cmd: string[]): Promise<{ ok: boolean; out: string }> {
+const WORKSPACE_DESC =
+  "Path to an agent workspace (clone). When provided, git commands run " +
+  "inside the workspace instead of the main working tree. Use the path " +
+  "returned by agent_workspace_create."
+
+async function run(
+  cmd: string[],
+  workspace?: string,
+): Promise<{ ok: boolean; out: string }> {
   try {
-    const result = await Bun.$`${cmd}`.text()
+    const proc = workspace
+      ? Bun.$`${cmd}`.cwd(workspace)
+      : Bun.$`${cmd}`
+    const result = await proc.text()
     return { ok: true, out: result.trim() }
   } catch (e: any) {
     return {
@@ -24,9 +35,14 @@ export const list_stale = tool({
       .boolean()
       .optional()
       .describe("Also check remote branches (default: true)"),
+    workspace: tool.schema
+      .string()
+      .optional()
+      .describe(WORKSPACE_DESC),
   },
   async execute(args) {
     const includeRemote = args.include_remote !== false
+    const ws = args.workspace
 
     // Get default branch
     const defaultResult = await run([
@@ -37,17 +53,17 @@ export const list_stale = tool({
       "defaultBranchRef",
       "--jq",
       ".defaultBranchRef.name",
-    ])
+    ], ws)
     const defaultBranch = defaultResult.ok ? defaultResult.out : "main"
 
     // Get current branch
-    const currentResult = await run(["git", "rev-parse", "--abbrev-ref", "HEAD"])
+    const currentResult = await run(["git", "rev-parse", "--abbrev-ref", "HEAD"], ws)
     const currentBranch = currentResult.ok ? currentResult.out : ""
 
     const lines: string[] = ["Stale Branch Report", "===================", ""]
 
     // Local merged branches
-    const localMerged = await run(["git", "branch", "--merged", defaultBranch])
+    const localMerged = await run(["git", "branch", "--merged", defaultBranch], ws)
     if (localMerged.ok && localMerged.out) {
       const branches = localMerged.out
         .split("\n")
@@ -64,7 +80,7 @@ export const list_stale = tool({
             "-1",
             "--format=%cr",
             branch,
-          ])
+          ], ws)
           const date = dateResult.ok ? dateResult.out : "unknown"
           lines.push(`  ${branch}  (${date})`)
         }
@@ -80,7 +96,7 @@ export const list_stale = tool({
     // Remote merged branches
     if (includeRemote) {
       // Fetch latest remote info
-      await run(["git", "fetch", "--prune"])
+      await run(["git", "fetch", "--prune"], ws)
 
       const remoteMerged = await run([
         "git",
@@ -88,7 +104,7 @@ export const list_stale = tool({
         "-r",
         "--merged",
         defaultBranch,
-      ])
+      ], ws)
 
       if (remoteMerged.ok && remoteMerged.out) {
         const branches = remoteMerged.out
@@ -110,7 +126,7 @@ export const list_stale = tool({
               "-1",
               "--format=%cr",
               branch,
-            ])
+            ], ws)
             const date = dateResult.ok ? dateResult.out : "unknown"
             lines.push(`  ${branch}  (${date})`)
           }
@@ -143,6 +159,10 @@ export const prune = tool({
       .boolean()
       .optional()
       .describe("Also delete remote merged branches (default: false)"),
+    workspace: tool.schema
+      .string()
+      .optional()
+      .describe(WORKSPACE_DESC),
   },
   async execute(args) {
     if (!args.confirm) {
@@ -151,6 +171,8 @@ export const prune = tool({
         "Run 'list_stale' first to review which branches will be removed."
       )
     }
+
+    const ws = args.workspace
 
     // Get default branch
     const defaultResult = await run([
@@ -161,17 +183,17 @@ export const prune = tool({
       "defaultBranchRef",
       "--jq",
       ".defaultBranchRef.name",
-    ])
+    ], ws)
     const defaultBranch = defaultResult.ok ? defaultResult.out : "main"
 
     // Get current branch
-    const currentResult = await run(["git", "rev-parse", "--abbrev-ref", "HEAD"])
+    const currentResult = await run(["git", "rev-parse", "--abbrev-ref", "HEAD"], ws)
     const currentBranch = currentResult.ok ? currentResult.out : ""
 
     const results: string[] = ["Branch Cleanup Results", "=====================", ""]
 
     // Delete local merged branches
-    const localMerged = await run(["git", "branch", "--merged", defaultBranch])
+    const localMerged = await run(["git", "branch", "--merged", defaultBranch], ws)
     if (localMerged.ok && localMerged.out) {
       const branches = localMerged.out
         .split("\n")
@@ -181,7 +203,7 @@ export const prune = tool({
       if (branches.length > 0) {
         results.push("Local branches:")
         for (const branch of branches) {
-          const del = await run(["git", "branch", "-d", branch])
+          const del = await run(["git", "branch", "-d", branch], ws)
           if (del.ok) {
             results.push(`  Deleted: ${branch}`)
           } else {
@@ -197,7 +219,7 @@ export const prune = tool({
 
     // Delete remote merged branches
     if (args.include_remote) {
-      await run(["git", "fetch", "--prune"])
+      await run(["git", "fetch", "--prune"], ws)
 
       const remoteMerged = await run([
         "git",
@@ -205,7 +227,7 @@ export const prune = tool({
         "-r",
         "--merged",
         defaultBranch,
-      ])
+      ], ws)
 
       if (remoteMerged.ok && remoteMerged.out) {
         const branches = remoteMerged.out
@@ -227,7 +249,7 @@ export const prune = tool({
             const remote = remoteBranch.slice(0, slashIdx)
             const branchName = remoteBranch.slice(slashIdx + 1)
 
-            const del = await run(["git", "push", remote, "--delete", branchName])
+            const del = await run(["git", "push", remote, "--delete", branchName], ws)
             if (del.ok) {
               results.push(`  Deleted: ${remoteBranch}`)
             } else {
@@ -243,11 +265,9 @@ export const prune = tool({
     results.push("")
 
     // Final prune of stale tracking refs
-    await run(["git", "fetch", "--prune"])
+    await run(["git", "fetch", "--prune"], ws)
     results.push("Stale remote-tracking references pruned.")
 
     return results.join("\n")
   },
 })
-
-

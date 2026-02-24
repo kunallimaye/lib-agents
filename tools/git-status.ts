@@ -1,12 +1,20 @@
 import { tool } from "@opencode-ai/plugin"
 import { ensureEnvironment } from "./git-ops-init"
 
-async function gitRun(args: string[]): Promise<string> {
+const WORKSPACE_DESC =
+  "Path to an agent workspace (clone). When provided, git commands run " +
+  "inside the workspace instead of the main working tree. Use the path " +
+  "returned by agent_workspace_create."
+
+async function gitRun(args: string[], workspace?: string): Promise<string> {
   const envErr = await ensureEnvironment()
   if (envErr) return envErr
 
   try {
-    const result = await Bun.$`git ${args}`.text()
+    const cmd = workspace
+      ? Bun.$`git -C ${workspace} ${args}`
+      : Bun.$`git ${args}`
+    const result = await cmd.text()
     return result.trim()
   } catch (e: any) {
     const stderr = e?.stderr?.toString?.()?.trim() || ""
@@ -17,9 +25,14 @@ async function gitRun(args: string[]): Promise<string> {
 export const status = tool({
   description:
     "Show the current working tree status including staged, unstaged, and untracked files.",
-  args: {},
-  async execute() {
-    return await gitRun(["status"])
+  args: {
+    workspace: tool.schema
+      .string()
+      .optional()
+      .describe(WORKSPACE_DESC),
+  },
+  async execute(args) {
+    return await gitRun(["status"], args.workspace)
   },
 })
 
@@ -43,6 +56,10 @@ export const log = tool({
       .string()
       .optional()
       .describe("Show commits since date (e.g., '2024-01-01', '1 week ago')"),
+    workspace: tool.schema
+      .string()
+      .optional()
+      .describe(WORKSPACE_DESC),
   },
   async execute(args) {
     const flags: string[] = [`-n${args.limit || 10}`]
@@ -50,7 +67,7 @@ export const log = tool({
     if (args.author) flags.push(`--author=${args.author}`)
     if (args.since) flags.push(`--since=${args.since}`)
 
-    return await gitRun(["log", ...flags])
+    return await gitRun(["log", ...flags], args.workspace)
   },
 })
 
@@ -66,13 +83,17 @@ export const diff = tool({
       .boolean()
       .optional()
       .describe("Show staged (cached) changes instead of unstaged"),
+    workspace: tool.schema
+      .string()
+      .optional()
+      .describe(WORKSPACE_DESC),
   },
   async execute(args) {
     const flags: string[] = []
     if (args.staged) flags.push("--cached")
     if (args.path) flags.push("--", args.path)
 
-    return await gitRun(["diff", ...flags])
+    return await gitRun(["diff", ...flags], args.workspace)
   },
 })
 
@@ -85,6 +106,10 @@ export const blame = tool({
       .string()
       .optional()
       .describe("Line range to blame (e.g., '10,20' for lines 10-20)"),
+    workspace: tool.schema
+      .string()
+      .optional()
+      .describe(WORKSPACE_DESC),
   },
   async execute(args) {
     const flags: string[] = []
@@ -94,15 +119,20 @@ export const blame = tool({
     }
     flags.push(args.path)
 
-    return await gitRun(["blame", ...flags])
+    return await gitRun(["blame", ...flags], args.workspace)
   },
 })
 
 export const stash_list = tool({
   description: "List all stashed changes.",
-  args: {},
-  async execute() {
-    const result = await gitRun(["stash", "list"])
+  args: {
+    workspace: tool.schema
+      .string()
+      .optional()
+      .describe(WORKSPACE_DESC),
+  },
+  async execute(args) {
+    const result = await gitRun(["stash", "list"], args.workspace)
     return result || "No stashes found."
   },
 })
@@ -115,19 +145,28 @@ export const stash_push = tool({
       .string()
       .optional()
       .describe("Message to describe the stash"),
+    workspace: tool.schema
+      .string()
+      .optional()
+      .describe(WORKSPACE_DESC),
   },
   async execute(args) {
     const flags: string[] = ["stash", "push"]
     if (args.message) flags.push("-m", args.message)
 
-    return await gitRun(flags)
+    return await gitRun(flags, args.workspace)
   },
 })
 
 export const stash_pop = tool({
   description: "Apply the most recent stash and remove it from the stash list.",
-  args: {},
-  async execute() {
-    return await gitRun(["stash", "pop"])
+  args: {
+    workspace: tool.schema
+      .string()
+      .optional()
+      .describe(WORKSPACE_DESC),
+  },
+  async execute(args) {
+    return await gitRun(["stash", "pop"], args.workspace)
   },
 })

@@ -26,7 +26,8 @@
         "readme-scaffold": false,
         "readme-validate": false,
         "pilot-workspace_*": false,
-        "pilot-run_*": false
+        "pilot-run_*": false,
+        "agent_workspace_*": false
       }
     },
     "plan": {
@@ -69,7 +70,8 @@
         "git-ops-init_setup": false,
         "git-ops-init_clearCache": false,
         "git-ops-init_ensureEnvironment": false,
-        "git-ops-init_getEnvironmentReport": false
+        "git-ops-init_getEnvironmentReport": false,
+        "agent_workspace_*": false
       }
     }
   }

@@ -1,12 +1,13 @@
 ---
 name: devops-workflow
-description: Issue-driven DevOps workflow with pre-flight checks, work execution, and PR lifecycle
+description: Issue-driven DevOps workflow with pre-flight checks, workspace isolation, and PR lifecycle
 ---
 
 ## What I do
 
 - Define the mandatory pre-flight protocol for all DevOps work
 - Guide branch naming conventions for issue-linked branches
+- Document workspace isolation for branch safety
 - Document the full lifecycle from issue to merged PR
 - Provide post-merge cleanup procedures
 
@@ -21,12 +22,29 @@ Every task follows this sequence before work begins:
 
 ```
 1. Issue Check     ->  Verify GitHub issue exists and is open
-2. Clean Tree      ->  No uncommitted changes in working directory
-3. Branch Create   ->  Dedicated branch from default branch
+2. Clean Tree      ->  No uncommitted changes in main working directory
+3. Workspace Setup ->  Clone repo to isolated /tmp/agent-<name>/ directory
+4. Branch Create   ->  Dedicated branch created in the workspace
+5. Plan Check      ->  Implementation plan posted on the issue
 ```
 
-All three must PASS before any work begins. If any check fails, stop and
+All checks must PASS before any work begins. If any check fails, stop and
 resolve the issue before proceeding.
+
+### Workspace Isolation
+
+The pre-flight protocol creates a fully isolated git clone in `/tmp/agent-*`.
+This ensures:
+
+- The main working tree's branch NEVER changes
+- Multiple subagents can work on different branches concurrently
+- No shared state (stash, hooks, config) between sessions
+- Clean teardown: `rm -rf /tmp/agent-*`
+
+After preflight passes, ALL operations must target the workspace path:
+- Pass `workspace` parameter to all git tools
+- Use workspace path as `workdir` for bash commands
+- Write/edit files inside the workspace directory
 
 ## Branch Naming Convention
 
@@ -58,36 +76,35 @@ Rules:
 Issue Created
   |
   v
-Pre-flight Checks (issue, clean tree, branch)
+Pre-flight Checks (issue, clean tree, workspace + branch, plan)
   |
   v
-Work Execution (containers, infra, troubleshooting)
+Work Execution (in isolated workspace — containers, infra, troubleshooting)
   |
   v
-Test Validation (mandatory — PASS / FAIL / WARN)
+Test Validation (mandatory — PASS / FAIL / WARN — run in workspace)
   |
   v
-Stage & Commit (via @git-ops, conventional commit format)
+Stage & Commit (via @git-ops with workspace path, conventional commit format)
   |
   v
-Create PR (via @git-ops, with "Closes #N" in body)
+Create PR (via @git-ops with workspace path, with "Closes #N" in body)
   |         - Always set delete_branch: true
+  v
+Destroy Workspace (agent_workspace_destroy)
+  |
   v
 Review & Merge
   |
   v
 Post-merge Cleanup
-  - Switch to default branch
-  - Pull latest
-  - Delete local feature branch
-  - git fetch --prune
 ```
 
 ## Test Validation
 
 Test validation is a **mandatory** step between work execution and commit.
-It runs automatically via the `validate_tests` tool and MUST NOT be silently
-skipped.
+It runs automatically via the `validate_tests` tool (with the workspace path)
+and MUST NOT be silently skipped.
 
 ### Detection Priority
 
@@ -127,13 +144,12 @@ Use conventional commits: `type(scope): description`
 
 ## Post-merge Cleanup
 
-After a PR is merged, clean up to prevent branch accumulation.
-Use the `/cleanup` command to list and prune stale merged branches:
+After a PR is merged, clean up to prevent branch accumulation:
 
-1. Switch to default branch: `git checkout main`
-2. Pull latest: `git pull`
-3. Delete local branch: `git branch -d <branch>`
-4. Prune remote refs: `git fetch --prune`
+1. Destroy workspace: `agent_workspace_destroy` (if not already destroyed)
+2. Delete local branch: `git branch -d <branch>` (in the main repo)
+3. Prune remote refs: `git fetch --prune`
 
+Use the `/cleanup` command to list and prune stale merged branches.
 This is a separate step from the post-work protocol. Do NOT run cleanup
 immediately after PR creation -- wait until the PR is merged.

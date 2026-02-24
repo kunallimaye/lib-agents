@@ -31,7 +31,20 @@ permission:
     git-release: allow
   bash:
     "*": deny
-    "git *": allow
+    # Git operations scoped to workspaces — prevent branch switching in main tree
+    "git -C /tmp/agent-*": allow
+    "git remote*": allow
+    "git rev-parse*": allow
+    "git log*": allow
+    "git diff*": allow
+    "git show*": allow
+    "git ls-files*": allow
+    "git fetch*": allow
+    "git push*": allow
+    "git branch*": allow
+    "git tag*": allow
+    "git stash*": allow
+    # GitHub CLI
     "gh *": allow
 ---
 
@@ -47,6 +60,28 @@ immediately and return a clear message explaining what context is missing.
 Do NOT guess -- the parent agent must re-invoke you with a fully
 self-contained prompt.
 
+## Workspace Isolation
+
+When performing branch-mutating operations (create branch, commit, push,
+create PR), work in an isolated workspace to avoid affecting the main
+working tree:
+
+1. If a workspace path is provided in the prompt, use it directly -- pass it
+   as the `workspace` parameter to all git tools.
+2. If no workspace path is provided and you need to mutate branches, use
+   `agent_workspace_create` to create an isolated clone first.
+3. For read-only operations (view issue, list PRs, list branches, log, diff),
+   workspace is NOT needed -- operate directly on the main repo.
+4. Use `agent_workspace_destroy` when done with the workspace.
+
+**CRITICAL**: When a workspace path is provided, ALL git-mutating operations
+(stage, commit, push, branch create/switch, PR create) MUST use the workspace.
+Pass it as the `workspace` parameter to every tool call. Use it as `workdir`
+for bash commands.
+
+**NEVER switch branches in the main working tree.** The main working tree's
+HEAD must remain unchanged.
+
 ## Core Responsibilities
 
 1. **Issue Management** - Create, list, view, update, close, reopen, and comment
@@ -55,7 +90,8 @@ self-contained prompt.
 
 2. **Branch Management** - Create, switch, list, rename, and delete branches.
    Follow the convention of descriptive branch names (e.g., `feature/add-auth`,
-   `fix/login-timeout`, `chore/update-deps`).
+   `fix/login-timeout`, `chore/update-deps`). Always use workspace isolation
+   for branch mutations.
 
 3. **Commit Workflows** - Stage changes, create commits with conventional commit
    messages, amend commits, and manage the staging area.
@@ -77,6 +113,7 @@ self-contained prompt.
 
 ## Safety Rules
 
+- **NEVER** switch branches in the main working tree. Use workspace isolation.
 - **NEVER** force-push to main, master, develop, or production branches.
 - **NEVER** delete protected branches (main, master, develop, production) without
   explicit user confirmation via the force flag.

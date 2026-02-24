@@ -1,12 +1,20 @@
 import { tool } from "@opencode-ai/plugin"
 import { ensureEnvironment } from "./git-ops-init"
 
-async function gitRun(args: string[]): Promise<string> {
+const WORKSPACE_DESC =
+  "Path to an agent workspace (clone). When provided, git commands run " +
+  "inside the workspace instead of the main working tree. Use the path " +
+  "returned by agent_workspace_create."
+
+async function gitRun(args: string[], workspace?: string): Promise<string> {
   const envErr = await ensureEnvironment()
   if (envErr) return envErr
 
   try {
-    const result = await Bun.$`git ${args}`.text()
+    const cmd = workspace
+      ? Bun.$`git -C ${workspace} ${args}`
+      : Bun.$`git ${args}`
+    const result = await cmd.text()
     return result.trim()
   } catch (e: any) {
     const stderr = e?.stderr?.toString?.()?.trim() || ""
@@ -29,6 +37,10 @@ export const create = tool({
       .boolean()
       .optional()
       .describe("Switch to the new branch after creating it (default: true)"),
+    workspace: tool.schema
+      .string()
+      .optional()
+      .describe(WORKSPACE_DESC),
   },
   async execute(args) {
     const shouldCheckout = args.checkout !== false
@@ -36,11 +48,11 @@ export const create = tool({
     if (shouldCheckout) {
       const flags = ["checkout", "-b", args.name]
       if (args.base) flags.push(args.base)
-      return await gitRun(flags)
+      return await gitRun(flags, args.workspace)
     } else {
       const flags = ["branch", args.name]
       if (args.base) flags.push(args.base)
-      return await gitRun(flags)
+      return await gitRun(flags, args.workspace)
     }
   },
 })
@@ -49,9 +61,13 @@ export const switch_branch = tool({
   description: "Switch to an existing branch.",
   args: {
     name: tool.schema.string().describe("Branch name to switch to"),
+    workspace: tool.schema
+      .string()
+      .optional()
+      .describe(WORKSPACE_DESC),
   },
   async execute(args) {
-    return await gitRun(["checkout", args.name])
+    return await gitRun(["checkout", args.name], args.workspace)
   },
 })
 
@@ -65,6 +81,10 @@ export const delete_branch = tool({
       .boolean()
       .optional()
       .describe("Force delete even if unmerged or protected (default: false)"),
+    workspace: tool.schema
+      .string()
+      .optional()
+      .describe(WORKSPACE_DESC),
   },
   async execute(args) {
     if (PROTECTED_BRANCHES.includes(args.name) && !args.force) {
@@ -75,7 +95,7 @@ export const delete_branch = tool({
     }
 
     const flag = args.force ? "-D" : "-d"
-    return await gitRun(["branch", flag, args.name])
+    return await gitRun(["branch", flag, args.name], args.workspace)
   },
 })
 
@@ -91,6 +111,10 @@ export const list = tool({
       .string()
       .optional()
       .describe("Glob pattern to filter branches (e.g., 'feature/*')"),
+    workspace: tool.schema
+      .string()
+      .optional()
+      .describe(WORKSPACE_DESC),
   },
   async execute(args) {
     const flags: string[] = ["branch"]
@@ -98,7 +122,7 @@ export const list = tool({
     flags.push("-v")
     if (args.pattern) flags.push("--list", args.pattern)
 
-    return await gitRun(flags)
+    return await gitRun(flags, args.workspace)
   },
 })
 
@@ -107,19 +131,28 @@ export const rename = tool({
   args: {
     old_name: tool.schema.string().describe("Current branch name"),
     new_name: tool.schema.string().describe("New branch name"),
+    workspace: tool.schema
+      .string()
+      .optional()
+      .describe(WORKSPACE_DESC),
   },
   async execute(args) {
     if (PROTECTED_BRANCHES.includes(args.old_name)) {
       return `Error: Refusing to rename protected branch '${args.old_name}'.`
     }
-    return await gitRun(["branch", "-m", args.old_name, args.new_name])
+    return await gitRun(["branch", "-m", args.old_name, args.new_name], args.workspace)
   },
 })
 
 export const current = tool({
   description: "Show the current branch name.",
-  args: {},
-  async execute() {
-    return await gitRun(["rev-parse", "--abbrev-ref", "HEAD"])
+  args: {
+    workspace: tool.schema
+      .string()
+      .optional()
+      .describe(WORKSPACE_DESC),
+  },
+  async execute(args) {
+    return await gitRun(["rev-parse", "--abbrev-ref", "HEAD"], args.workspace)
   },
 })

@@ -1,9 +1,25 @@
 import { tool } from "@opencode-ai/plugin"
 import { existsSync } from "fs"
+import { randomBytes } from "crypto"
 
 async function run(cmd: string[]): Promise<{ ok: boolean; out: string }> {
   try {
     const result = await Bun.$`${cmd}`.text()
+    return { ok: true, out: result.trim() }
+  } catch (e: any) {
+    return {
+      ok: false,
+      out: e?.stderr?.toString?.()?.trim() || e.message || "unknown error",
+    }
+  }
+}
+
+async function runInDir(
+  cmd: string[],
+  cwd: string,
+): Promise<{ ok: boolean; out: string }> {
+  try {
+    const result = await Bun.$`${cmd}`.cwd(cwd).text()
     return { ok: true, out: result.trim() }
   } catch (e: any) {
     return {
@@ -32,6 +48,10 @@ function slugify(text: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 40)
+}
+
+function generateHash(): string {
+  return randomBytes(4).toString("hex")
 }
 
 // ─── Individual Check Helpers (private) ──────────────────────────────
@@ -74,9 +94,14 @@ async function checkIssue(issueNumber: number): Promise<{ lines: string[]; pass:
   }
 }
 
-async function checkClean(): Promise<{ lines: string[]; pass: boolean }> {
+async function checkClean(workspace?: string): Promise<{ lines: string[]; pass: boolean }> {
   const lines: string[] = []
-  const result = await run(["git", "status", "--porcelain"])
+
+  // If workspace is provided, check the workspace's cleanliness
+  // A freshly cloned workspace is always clean, but subsequent changes may dirty it
+  const result = workspace
+    ? await runInDir(["git", "status", "--porcelain"], workspace)
+    : await run(["git", "status", "--porcelain"])
 
   if (!result.ok) {
     lines.push(`   FAIL: Could not check git status. Error: ${result.out}`)
@@ -118,56 +143,91 @@ async function checkBranch(
   issueNumber: number,
   issueTitle: string,
   type: string,
-): Promise<{ lines: string[]; pass: boolean; branchName: string }> {
+  sourceDir: string,
+): Promise<{ lines: string[]; pass: boolean; branchName: string; workspacePath: string }> {
   const lines: string[] = []
   const slug = slugify(issueTitle)
   const branchName = `${type}/${issueNumber}-${slug}`
 
-  const currentResult = await run(["git", "rev-parse", "--abbrev-ref", "HEAD"])
-  if (!currentResult.ok) {
-    lines.push("   FAIL: Could not determine current branch.")
-    return { lines, pass: false, branchName }
+  // Get remote URL from the source repo
+  const remoteResult = await run(["git", "-C", sourceDir, "remote", "get-url", "origin"])
+  if (!remoteResult.ok) {
+    lines.push(`   FAIL: Could not get remote URL. ${remoteResult.out}`)
+    return { lines, pass: false, branchName, workspacePath: "" }
   }
-
-  const currentBranch = currentResult.out
-  const issuePattern = `/${issueNumber}-`
-
-  if (currentBranch.includes(issuePattern)) {
-    lines.push(`   PASS: Already on branch '${currentBranch}' for issue #${issueNumber}`)
-    return { lines, pass: true, branchName: currentBranch }
-  }
+  const remoteUrl = remoteResult.out
 
   const defaultBranch = await getDefaultBranch()
+  const hash = generateHash()
+  const wsName = `issue-${issueNumber}-${slug}`.slice(0, 50)
+  const wsPath = `/tmp/agent-${wsName}-${hash}`
 
-  if (currentBranch !== defaultBranch) {
-    const switchResult = await run(["git", "checkout", defaultBranch])
-    if (!switchResult.ok) {
-      lines.push(`   FAIL: Could not switch to ${defaultBranch}.`)
-      return { lines, pass: false, branchName }
+  // Clone with --dissociate --reference for speed + full isolation
+  lines.push(`   Creating isolated workspace: ${wsPath}`)
+  const cloneResult = await run([
+    "git", "clone",
+    "--dissociate", "--reference", sourceDir,
+    "--single-branch", "--branch", defaultBranch,
+    remoteUrl, wsPath,
+  ])
+
+  if (!cloneResult.ok) {
+    // Fallback: try without --reference
+    const fallbackResult = await run([
+      "git", "clone",
+      "--single-branch", "--branch", defaultBranch,
+      remoteUrl, wsPath,
+    ])
+    if (!fallbackResult.ok) {
+      lines.push(`   FAIL: Could not clone repository.`)
+      lines.push(`   Error: ${fallbackResult.out}`)
+      return { lines, pass: false, branchName, workspacePath: "" }
     }
+    lines.push("   Clone method: direct (fallback)")
+  } else {
+    lines.push("   Clone method: dissociate + reference (fast)")
   }
 
-  await run(["git", "pull", "--ff-only"]) // non-fatal
+  // Check if the branch already exists on the remote
+  const remoteBranchCheck = await runInDir(
+    ["git", "ls-remote", "--heads", "origin", branchName],
+    wsPath,
+  )
 
-  const existsResult = await run(["git", "rev-parse", "--verify", branchName])
-  if (existsResult.ok) {
-    const checkoutResult = await run(["git", "checkout", branchName])
+  if (remoteBranchCheck.ok && remoteBranchCheck.out.includes(branchName)) {
+    // Branch exists on remote — fetch and checkout
+    await runInDir(["git", "fetch", "origin", branchName], wsPath)
+    const checkoutResult = await runInDir(
+      ["git", "checkout", "-b", branchName, `origin/${branchName}`],
+      wsPath,
+    )
     if (!checkoutResult.ok) {
-      lines.push(`   FAIL: Could not switch to existing branch '${branchName}'.`)
-      return { lines, pass: false, branchName }
+      // Maybe created by fetch; try simple checkout
+      const simpleCheckout = await runInDir(
+        ["git", "checkout", branchName],
+        wsPath,
+      )
+      if (!simpleCheckout.ok) {
+        lines.push(`   FAIL: Could not switch to existing branch '${branchName}'.`)
+        return { lines, pass: false, branchName, workspacePath: wsPath }
+      }
     }
-    lines.push(`   PASS: Switched to existing branch '${branchName}'`)
+    lines.push(`   PASS: Checked out existing branch '${branchName}' in workspace`)
   } else {
-    const createResult = await run(["git", "checkout", "-b", branchName])
+    // Branch does not exist — create it from default branch
+    const createResult = await runInDir(
+      ["git", "checkout", "-b", branchName],
+      wsPath,
+    )
     if (!createResult.ok) {
       lines.push(`   FAIL: Could not create branch '${branchName}'.`)
       lines.push(`   Error: ${createResult.out}`)
-      return { lines, pass: false, branchName }
+      return { lines, pass: false, branchName, workspacePath: wsPath }
     }
-    lines.push(`   PASS: Created branch '${branchName}' from '${defaultBranch}'`)
+    lines.push(`   PASS: Created branch '${branchName}' from '${defaultBranch}' in workspace`)
   }
 
-  return { lines, pass: true, branchName }
+  return { lines, pass: true, branchName, workspacePath: wsPath }
 }
 
 async function checkPlan(issueNumber: number): Promise<{ lines: string[]; pass: boolean }> {
@@ -219,9 +279,12 @@ async function checkPlan(issueNumber: number): Promise<{ lines: string[]; pass: 
 export const preflight = tool({
   description:
     "Run pre-flight checks for issue-driven development. Checks: issue exists, " +
-    "working tree is clean, dedicated branch exists/created, and implementation " +
-    "plan posted on the issue. Use the 'checks' parameter to run specific checks, " +
-    "or omit it to run all checks in sequence. This is the standard pre-flight tool.",
+    "working tree is clean, isolated workspace with dedicated branch is created, " +
+    "and implementation plan posted on the issue. The branch check now creates " +
+    "a fully isolated clone in /tmp/agent-* instead of switching branches in the " +
+    "main working tree. Returns the workspace path for subsequent operations. " +
+    "Use the 'checks' parameter to run specific checks, or omit it to run all " +
+    "checks in sequence.",
   args: {
     issue_number: tool.schema.number().describe("GitHub issue number"),
     checks: tool.schema
@@ -243,13 +306,14 @@ export const preflight = tool({
         "Set to true for trivial issues where a plan is not needed.",
       ),
   },
-  async execute(args) {
+  async execute(args, context) {
     const checksToRun: PreflightCheck[] =
       args.checks && args.checks.length > 0
         ? args.checks as PreflightCheck[]
         : ALL_CHECKS
 
     const type = args.type || "feature"
+    const sourceDir = context.directory || "."
     const lines: string[] = [
       "DevOps Pre-flight Check",
       "=======================",
@@ -258,6 +322,7 @@ export const preflight = tool({
 
     let issueTitle = ""
     let branchName = ""
+    let workspacePath = ""
     let anyFailed = false
 
     // Run checks in order
@@ -283,6 +348,7 @@ export const preflight = tool({
         case "clean": {
           lines.push(`${step}. Clean Tree Check`)
           lines.push("   ----------------")
+          // Check the main working tree is clean before cloning
           const cleanResult = await checkClean()
           lines.push(...cleanResult.lines)
           if (!cleanResult.pass) {
@@ -296,11 +362,17 @@ export const preflight = tool({
         }
 
         case "branch": {
-          lines.push(`${step}. Branch Check`)
-          lines.push("   ------------")
-          const branchResult = await checkBranch(args.issue_number, issueTitle, type)
+          lines.push(`${step}. Workspace + Branch Check`)
+          lines.push("   ------------------------")
+          const branchResult = await checkBranch(
+            args.issue_number,
+            issueTitle,
+            type,
+            sourceDir,
+          )
           lines.push(...branchResult.lines)
           branchName = branchResult.branchName
+          workspacePath = branchResult.workspacePath
           if (!branchResult.pass) {
             anyFailed = true
             lines.push("")
@@ -338,8 +410,16 @@ export const preflight = tool({
     lines.push("=======================")
     lines.push(overallResult)
     lines.push("")
-    lines.push(`Issue  : #${args.issue_number} -- ${issueTitle}`)
-    if (branchName) lines.push(`Branch : ${branchName}`)
+    lines.push(`Issue     : #${args.issue_number} -- ${issueTitle}`)
+    if (branchName) lines.push(`Branch    : ${branchName}`)
+    if (workspacePath) {
+      lines.push(`Workspace : ${workspacePath}`)
+      lines.push("")
+      lines.push("IMPORTANT: All subsequent operations (file edits, git commands,")
+      lines.push("builds, tests) MUST use this workspace path. Pass it as the")
+      lines.push("'workspace' parameter to git tools, or use it as 'workdir'")
+      lines.push("for bash commands.")
+    }
 
     return lines.join("\n")
   },
@@ -373,12 +453,21 @@ function autoDetectTestCommand(pt: ProjectType): string | null {
 export const validate_tests = tool({
   description:
     "Run test validation before committing. Detects available test " +
-    "infrastructure in priority order: make local-test → make test → " +
+    "infrastructure in priority order: make local-test -> make test -> " +
     "auto-detect by project type. Returns PASS, FAIL, or WARN with " +
-    "structured output and options for the user.",
-  args: {},
-  async execute(_args, context) {
-    const root = context.directory || "."
+    "structured output and options for the user. Supports running in " +
+    "an isolated workspace.",
+  args: {
+    workspace: tool.schema
+      .string()
+      .optional()
+      .describe(
+        "Path to an agent workspace (clone). When provided, tests run " +
+        "inside the workspace instead of the main project directory.",
+      ),
+  },
+  async execute(args, context) {
+    const root = args.workspace || context.directory || "."
     const lines: string[] = [
       "Test Validation",
       "===============",
@@ -397,13 +486,17 @@ export const validate_tests = tool({
 
     if (hasMakefile) {
       // Check for local-test target
-      const localTestCheck = await run(["make", "-n", "local-test"])
+      const localTestCheck = args.workspace
+        ? await runInDir(["make", "-n", "local-test"], root)
+        : await run(["make", "-n", "local-test"])
       if (localTestCheck.ok) {
         testCommand = "make local-test"
         testSource = "Makefile target: local-test"
       } else {
         // Check for test target
-        const testCheck = await run(["make", "-n", "test"])
+        const testCheck = args.workspace
+          ? await runInDir(["make", "-n", "test"], root)
+          : await run(["make", "-n", "test"])
         if (testCheck.ok) {
           testCommand = "make test"
           testSource = "Makefile target: test"
@@ -421,7 +514,7 @@ export const validate_tests = tool({
       }
     }
 
-    // No test infrastructure found → WARN
+    // No test infrastructure found -> WARN
     if (!testCommand) {
       lines.push("Result: WARN")
       lines.push("")
@@ -448,7 +541,9 @@ export const validate_tests = tool({
     lines.push("")
 
     const cmdParts = testCommand.split(" ")
-    const result = await run(cmdParts)
+    const result = args.workspace
+      ? await runInDir(cmdParts, root)
+      : await run(cmdParts)
 
     if (result.ok) {
       // PASS
@@ -486,7 +581,7 @@ export const validate_tests = tool({
       lines.push("")
       lines.push("Options:")
       lines.push("  1. Fix the failing tests and re-run validation")
-      lines.push("  2. Skip test validation (requires explicit user confirmation — not recommended)")
+      lines.push("  2. Skip test validation (requires explicit user confirmation -- not recommended)")
       lines.push("  3. Abort the commit")
       lines.push("")
       lines.push("The user MUST explicitly confirm before skipping failed tests.")
