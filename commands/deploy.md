@@ -5,6 +5,10 @@ agent: devops
 
 $ARGUMENTS
 
+If $ARGUMENTS is empty, inspect the project to determine the deployment
+target (look for Containerfile, Dockerfile, cloudbuild.yaml, Terraform
+files) and ask the user to confirm before proceeding.
+
 This is a deployment workflow. After pre-flight passes, check if a Makefile
 exists:
 

@@ -5,6 +5,9 @@ agent: git-ops
 
 Review PR $ARGUMENTS
 
+If $ARGUMENTS is empty or does not contain a PR number, list open PRs and
+ask which one to review.
+
 1. Get the PR details and diff
 2. Analyze the changes for:
    - Code quality and best practices
