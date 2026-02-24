@@ -864,295 +864,161 @@ function gitignoreEntries(pt: ProjectType): string[] {
   return [...common, ...perLang[pt]]
 }
 
-// ─── Tool Exports ────────────────────────────────────────────────────
+// ─── Component Scaffolding Helpers ───────────────────────────────────
 
-export const makefile = tool({
-  description:
-    "Generate a Makefile with standard targets for local dev, container dev, " +
-    "and cloud runtime. Each target delegates to a script in scripts/. " +
-    "Detects the project type automatically. Skips if Makefile already exists " +
-    "unless force=true.",
-  args: {
-    force: tool.schema
-      .boolean()
-      .optional()
-      .describe("Overwrite existing Makefile (default: false)"),
-  },
-  async execute(args, context) {
-    const root = context.directory || "."
-    const pt = detectProject(root)
-    const result = safeWrite(
-      join(root, "Makefile"),
-      generateMakefile(pt),
-      args.force || false,
-    )
-    return [`Detected project type: ${projectLabel(pt)}`, "", result].join("\n")
-  },
-})
+type ScaffoldComponent = "makefile" | "scripts" | "container" | "cloudbuild" | "terraform" | "gitignore"
 
-export const scripts = tool({
-  description:
-    "Generate modular shell scripts in scripts/: common.sh (shared functions), " +
-    "local.sh (local dev), container.sh (container ops), cloud.sh (cloud runtime). " +
-    "Tailored to the detected project type. Skips existing files unless force=true.",
-  args: {
-    force: tool.schema
-      .boolean()
-      .optional()
-      .describe("Overwrite existing scripts (default: false)"),
-  },
-  async execute(args, context) {
-    const root = context.directory || "."
-    const pt = detectProject(root)
-    const force = args.force || false
-    const dir = join(root, "scripts")
-    ensureDir(dir)
+const ALL_COMPONENTS: ScaffoldComponent[] = ["makefile", "scripts", "container", "cloudbuild", "terraform", "gitignore"]
 
-    const results = [
-      `Detected project type: ${projectLabel(pt)}`,
-      "",
-      safeWrite(join(dir, "common.sh"), generateCommonSh(), force),
-      safeWrite(join(dir, "local.sh"), generateLocalSh(pt), force),
-      safeWrite(join(dir, "container.sh"), generateContainerSh(pt), force),
-      safeWrite(join(dir, "cloud.sh"), generateCloudSh(), force),
-    ]
+async function scaffoldMakefile(root: string, pt: ProjectType, force: boolean): Promise<string[]> {
+  return [
+    "── Makefile ──",
+    safeWrite(join(root, "Makefile"), generateMakefile(pt), force),
+  ]
+}
 
-    // Make scripts executable
-    try {
-      await Bun.$`chmod +x ${dir}/*.sh`.text()
-    } catch { /* non-fatal */ }
+async function scaffoldScripts(root: string, pt: ProjectType, force: boolean): Promise<string[]> {
+  const dir = join(root, "scripts")
+  ensureDir(dir)
+  const results = [
+    "── Scripts ──",
+    safeWrite(join(dir, "common.sh"), generateCommonSh(), force),
+    safeWrite(join(dir, "local.sh"), generateLocalSh(pt), force),
+    safeWrite(join(dir, "container.sh"), generateContainerSh(pt), force),
+    safeWrite(join(dir, "cloud.sh"), generateCloudSh(), force),
+  ]
+  try {
+    await Bun.$`chmod +x ${dir}/*.sh`.text()
+  } catch { /* non-fatal */ }
+  return results
+}
 
-    return results.join("\n")
-  },
-})
+function scaffoldContainer(root: string, pt: ProjectType, force: boolean): string[] {
+  const dir = join(root, "cicd")
+  ensureDir(dir)
+  return [
+    "── Container Files ──",
+    safeWrite(join(dir, "Dockerfile"), generateDockerfile(pt), force),
+    safeWrite(join(dir, ".dockerignore"), generateDockerignore(pt), force),
+  ]
+}
 
-export const container_files = tool({
-  description:
-    "Generate Dockerfile and .dockerignore in cicd/. Uses multi-stage build " +
-    "tailored to the detected project type. Skips existing files unless force=true.",
-  args: {
-    force: tool.schema
-      .boolean()
-      .optional()
-      .describe("Overwrite existing files (default: false)"),
-  },
-  async execute(args, context) {
-    const root = context.directory || "."
-    const pt = detectProject(root)
-    const force = args.force || false
-    const dir = join(root, "cicd")
-    ensureDir(dir)
+function scaffoldCloudbuild(root: string, force: boolean): string[] {
+  const dir = join(root, "cicd")
+  ensureDir(dir)
+  return [
+    "── Cloud Build ──",
+    safeWrite(join(dir, "cloudbuild.yaml"), generateCloudbuildYaml(), force),
+    safeWrite(join(dir, "cloudbuild-plan.yaml"), generateCloudbuildPlanYaml(), force),
+    safeWrite(join(dir, "cloudbuild-apply.yaml"), generateCloudbuildApplyYaml(), force),
+  ]
+}
 
-    const results = [
-      `Detected project type: ${projectLabel(pt)}`,
-      "",
-      safeWrite(join(dir, "Dockerfile"), generateDockerfile(pt), force),
-      safeWrite(join(dir, ".dockerignore"), generateDockerignore(pt), force),
-    ]
+function scaffoldTerraform(root: string, force: boolean): string[] {
+  const dir = join(root, "cicd", "terraform")
+  ensureDir(dir)
+  return [
+    "── Terraform ──",
+    safeWrite(join(dir, "providers.tf"), generateTfProviders(), force),
+    safeWrite(join(dir, "backend.tf"), generateTfBackend(), force),
+    safeWrite(join(dir, "variables.tf"), generateTfVariables(), force),
+    safeWrite(join(dir, "main.tf"), generateTfMain(), force),
+    safeWrite(join(dir, "outputs.tf"), generateTfOutputs(), force),
+  ]
+}
 
-    return results.join("\n")
-  },
-})
+function scaffoldGitignore(root: string, pt: ProjectType): string[] {
+  const entries = gitignoreEntries(pt)
+  const gitignorePath = join(root, ".gitignore")
+  let existing: string[] = []
+  if (existsSync(gitignorePath)) {
+    existing = readFileSync(gitignorePath, "utf-8").split("\n")
+  }
+  const existingSet = new Set(existing.map((l) => l.trim()))
+  const toAdd = entries.filter(
+    (e) => !existingSet.has(e.trim()) && e.trim() !== "",
+  )
 
-export const cloudbuild = tool({
-  description:
-    "Generate Cloud Build YAML configs in cicd/: cloudbuild.yaml (main pipeline), " +
-    "cloudbuild-plan.yaml (Terraform plan on PR), cloudbuild-apply.yaml " +
-    "(Terraform apply on merge). Skips existing files unless force=true.",
-  args: {
-    force: tool.schema
-      .boolean()
-      .optional()
-      .describe("Overwrite existing files (default: false)"),
-  },
-  async execute(args, context) {
-    const root = context.directory || "."
-    const force = args.force || false
-    const dir = join(root, "cicd")
-    ensureDir(dir)
-
-    const results = [
-      safeWrite(join(dir, "cloudbuild.yaml"), generateCloudbuildYaml(), force),
-      safeWrite(join(dir, "cloudbuild-plan.yaml"), generateCloudbuildPlanYaml(), force),
-      safeWrite(join(dir, "cloudbuild-apply.yaml"), generateCloudbuildApplyYaml(), force),
-    ]
-
-    return results.join("\n")
-  },
-})
-
-export const terraform_cicd = tool({
-  description:
-    "Generate Terraform modules in cicd/terraform/ with opinionated GCP " +
-    "resources: Artifact Registry repo, Cloud Run service, IAM bindings, " +
-    "GCS backend. Skips existing files unless force=true.",
-  args: {
-    force: tool.schema
-      .boolean()
-      .optional()
-      .describe("Overwrite existing files (default: false)"),
-  },
-  async execute(args, context) {
-    const root = context.directory || "."
-    const force = args.force || false
-    const dir = join(root, "cicd", "terraform")
-    ensureDir(dir)
-
-    const results = [
-      safeWrite(join(dir, "providers.tf"), generateTfProviders(), force),
-      safeWrite(join(dir, "backend.tf"), generateTfBackend(), force),
-      safeWrite(join(dir, "variables.tf"), generateTfVariables(), force),
-      safeWrite(join(dir, "main.tf"), generateTfMain(), force),
-      safeWrite(join(dir, "outputs.tf"), generateTfOutputs(), force),
-    ]
-
-    return results.join("\n")
-  },
-})
-
-export const gitignore = tool({
-  description:
-    "Create or update .gitignore with project-appropriate entries. " +
-    "Idempotent: appends missing entries without duplicating existing ones.",
-  args: {},
-  async execute(_args, context) {
-    const root = context.directory || "."
-    const pt = detectProject(root)
-    const gitignorePath = join(root, ".gitignore")
-    const entries = gitignoreEntries(pt)
-
-    let existing: string[] = []
-    if (existsSync(gitignorePath)) {
-      existing = readFileSync(gitignorePath, "utf-8").split("\n")
-    }
-
-    const existingSet = new Set(existing.map((l) => l.trim()))
-    const toAdd = entries.filter(
-      (e) => !existingSet.has(e.trim()) && e.trim() !== "",
-    )
-
-    if (toAdd.length === 0) {
-      return `Detected project type: ${projectLabel(pt)}\n\n.gitignore is up to date. No entries added.`
-    }
-
+  const results = ["── .gitignore ──"]
+  if (toAdd.length === 0) {
+    results.push("  .gitignore is up to date")
+  } else {
     const newContent = existing.length > 0
       ? existing.join("\n") + "\n\n# Added by devops scaffold\n" + toAdd.join("\n") + "\n"
       : entries.join("\n") + "\n"
-
     writeFileSync(gitignorePath, newContent)
-
-    return [
-      `Detected project type: ${projectLabel(pt)}`,
-      "",
+    results.push(
       existing.length > 0
-        ? `Updated .gitignore: added ${toAdd.length} entries`
-        : `Created .gitignore with ${entries.length} entries`,
-      "",
-      "Added:",
-      ...toAdd.map((e) => `  ${e}`),
-    ].join("\n")
-  },
-})
+        ? `  Updated .gitignore: added ${toAdd.length} entries`
+        : `  Created .gitignore with ${entries.length} entries`,
+    )
+  }
+  return results
+}
 
-export const full_scaffold = tool({
+// ─── Tool Export ─────────────────────────────────────────────────────
+
+export const scaffold = tool({
   description:
-    "Generate the complete project operational structure: Makefile, scripts/, " +
-    "cicd/Dockerfile, cicd/cloudbuild*.yaml, cicd/terraform/, and .gitignore. " +
-    "Detects project type and tailors all files. Skips existing files unless " +
-    "force=true. This is the preferred single-command scaffolding entry point.",
+    "Generate project operational structure: Makefile, scripts/, cicd/Dockerfile, " +
+    "cicd/cloudbuild*.yaml, cicd/terraform/, and .gitignore. Detects project type " +
+    "and tailors all files. Use the 'components' parameter to generate only specific " +
+    "parts, or omit it to generate everything. Skips existing files unless force=true.",
   args: {
+    components: tool.schema
+      .array(tool.schema.enum(["makefile", "scripts", "container", "cloudbuild", "terraform", "gitignore"]))
+      .optional()
+      .describe(
+        "Which components to scaffold. Options: makefile, scripts, container, " +
+        "cloudbuild, terraform, gitignore. Omit to generate everything.",
+      ),
     force: tool.schema
       .boolean()
       .optional()
-      .describe("Overwrite all existing files (default: false)"),
+      .describe("Overwrite existing files (default: false)"),
   },
   async execute(args, context) {
     const root = context.directory || "."
     const pt = detectProject(root)
     const force = args.force || false
+    const components: ScaffoldComponent[] =
+      args.components && args.components.length > 0
+        ? args.components as ScaffoldComponent[]
+        : ALL_COMPONENTS
 
     const results: string[] = [
-      "Full Project Scaffold",
-      "=====================",
+      "Project Scaffold",
+      "================",
       `Detected project type: ${projectLabel(pt)}`,
+      `Components: ${components.join(", ")}`,
       "",
     ]
 
-    // 1. Makefile
-    results.push("── Makefile ──")
-    results.push(
-      safeWrite(join(root, "Makefile"), generateMakefile(pt), force),
-    )
-    results.push("")
-
-    // 2. Scripts
-    results.push("── Scripts ──")
-    const scriptsDir = join(root, "scripts")
-    ensureDir(scriptsDir)
-    results.push(safeWrite(join(scriptsDir, "common.sh"), generateCommonSh(), force))
-    results.push(safeWrite(join(scriptsDir, "local.sh"), generateLocalSh(pt), force))
-    results.push(safeWrite(join(scriptsDir, "container.sh"), generateContainerSh(pt), force))
-    results.push(safeWrite(join(scriptsDir, "cloud.sh"), generateCloudSh(), force))
-    try {
-      await Bun.$`chmod +x ${scriptsDir}/*.sh`.text()
-    } catch { /* non-fatal */ }
-    results.push("")
-
-    // 3. Container files
-    results.push("── Container Files ──")
-    const cicdDir = join(root, "cicd")
-    ensureDir(cicdDir)
-    results.push(safeWrite(join(cicdDir, "Dockerfile"), generateDockerfile(pt), force))
-    results.push(safeWrite(join(cicdDir, ".dockerignore"), generateDockerignore(pt), force))
-    results.push("")
-
-    // 4. Cloud Build
-    results.push("── Cloud Build ──")
-    results.push(safeWrite(join(cicdDir, "cloudbuild.yaml"), generateCloudbuildYaml(), force))
-    results.push(safeWrite(join(cicdDir, "cloudbuild-plan.yaml"), generateCloudbuildPlanYaml(), force))
-    results.push(safeWrite(join(cicdDir, "cloudbuild-apply.yaml"), generateCloudbuildApplyYaml(), force))
-    results.push("")
-
-    // 5. Terraform
-    results.push("── Terraform ──")
-    const tfDir = join(cicdDir, "terraform")
-    ensureDir(tfDir)
-    results.push(safeWrite(join(tfDir, "providers.tf"), generateTfProviders(), force))
-    results.push(safeWrite(join(tfDir, "backend.tf"), generateTfBackend(), force))
-    results.push(safeWrite(join(tfDir, "variables.tf"), generateTfVariables(), force))
-    results.push(safeWrite(join(tfDir, "main.tf"), generateTfMain(), force))
-    results.push(safeWrite(join(tfDir, "outputs.tf"), generateTfOutputs(), force))
-    results.push("")
-
-    // 6. Gitignore
-    results.push("── .gitignore ──")
-    const entries = gitignoreEntries(pt)
-    const gitignorePath = join(root, ".gitignore")
-    let existing: string[] = []
-    if (existsSync(gitignorePath)) {
-      existing = readFileSync(gitignorePath, "utf-8").split("\n")
-    }
-    const existingSet = new Set(existing.map((l) => l.trim()))
-    const toAdd = entries.filter(
-      (e) => !existingSet.has(e.trim()) && e.trim() !== "",
-    )
-
-    if (toAdd.length === 0) {
-      results.push("  .gitignore is up to date")
-    } else {
-      const newContent = existing.length > 0
-        ? existing.join("\n") + "\n\n# Added by devops scaffold\n" + toAdd.join("\n") + "\n"
-        : entries.join("\n") + "\n"
-      writeFileSync(gitignorePath, newContent)
-      results.push(
-        existing.length > 0
-          ? `  Updated .gitignore: added ${toAdd.length} entries`
-          : `  Created .gitignore with ${entries.length} entries`,
-      )
+    for (const component of components) {
+      switch (component) {
+        case "makefile":
+          results.push(...await scaffoldMakefile(root, pt, force))
+          break
+        case "scripts":
+          results.push(...await scaffoldScripts(root, pt, force))
+          break
+        case "container":
+          results.push(...scaffoldContainer(root, pt, force))
+          break
+        case "cloudbuild":
+          results.push(...scaffoldCloudbuild(root, force))
+          break
+        case "terraform":
+          results.push(...scaffoldTerraform(root, force))
+          break
+        case "gitignore":
+          results.push(...scaffoldGitignore(root, pt))
+          break
+      }
+      results.push("")
     }
 
-    results.push("")
-    results.push("=====================")
+    results.push("================")
     results.push("Scaffold complete. Run 'make help' to see available targets.")
 
     return results.join("\n")

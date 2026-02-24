@@ -14,5 +14,5 @@ This is a branch cleanup workflow. No pre-flight checks are needed for cleanup.
    - Local only (default)
    - Local and remote (if they confirm)
 4. Run `prune` with the user's confirmation to delete the selected branches.
-5. Run `prune_remote` to clean up stale remote-tracking references.
-6. Show a summary of what was cleaned up.
+   Use `include_remote=true` to also clean up stale remote-tracking references.
+5. Show a summary of what was cleaned up.

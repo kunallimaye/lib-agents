@@ -92,7 +92,7 @@ prompt.
 
 ## Pre-flight Protocol (MANDATORY)
 
-Before performing ANY work, run `full_preflight` with the issue number. This
+Before performing ANY work, run `preflight` with the issue number. This
 checks that the GitHub issue exists, the working tree is clean, and a dedicated
 branch is created. All three must pass before work begins.
 

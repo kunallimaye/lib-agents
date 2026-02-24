@@ -66,14 +66,14 @@ cicd/
 
 | Tool | Exports | Description |
 |------|---------|-------------|
-| `devops-preflight` | `check_issue`, `check_clean`, `check_branch`, `full_preflight` | Pre-flight checks |
-| `scaffold` | `makefile`, `scripts`, `container_files`, `cloudbuild`, `terraform_cicd`, `gitignore`, `full_scaffold` | Project scaffolding |
+| `devops-preflight` | `preflight`, `validate_tests` | Pre-flight checks and test validation |
+| `scaffold` | `scaffold` | Project scaffolding (with optional `components` parameter) |
 | `cloudbuild` | `submit`, `list_builds`, `log`, `triggers_list`, `triggers_run`, `cancel` | Cloud Build management |
 | `podman` | `build`, `run_container`, `ps`, `images`, `logs`, `stop`, `rm`, `inspect`, `exec` | Container management |
 | `terraform` | `init`, `validate`, `fmt`, `plan`, `apply`, `destroy`, `state_list`, `state_show`, `output`, `workspace_list`, `workspace_select` | Infrastructure as code |
 | `gcloud` | `auth_status`, `project_info`, `compute_list`, `gke_clusters`, `run_services`, `logs_read`, `iam_roles`, `config_list`, `services_list` | Google Cloud operations |
 | `troubleshoot` | `check_ports`, `check_dns`, `check_connectivity`, `system_info`, `process_list`, `disk_usage`, `container_health` | System diagnostics |
-| `branch-cleanup` | `list_stale`, `prune`, `prune_remote` | Stale branch cleanup |
+| `branch-cleanup` | `list_stale`, `prune` | Stale branch cleanup |
 
 ## Commands
 
