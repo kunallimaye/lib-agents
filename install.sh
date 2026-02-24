@@ -33,6 +33,13 @@ AGENTS_DIR="${SCRIPT_DIR:+${SCRIPT_DIR}/agents}"
 REPO_ROOT="${SCRIPT_DIR}"
 SHARED_RESOURCES_INSTALLED=false
 
+# Profile state
+PROFILE_NAME=""
+declare -a PROFILE_AGENTS=()
+declare -A PROFILE_AGENT_SKILLS=()   # agent -> space-separated skill list
+declare -a PROFILE_ALL_SKILLS=()     # UNION of all agent_skills values
+PROFILE_DESCRIPTION=""
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -47,6 +54,475 @@ info()  { echo -e "${BLUE}[INFO]${NC}  $*"; }
 ok()    { echo -e "${GREEN}[OK]${NC}    $*"; }
 warn()  { echo -e "${YELLOW}[WARN]${NC}  $*"; }
 err()   { echo -e "${RED}[ERROR]${NC} $*"; }
+
+# ============================================================================
+# Profile infrastructure
+# ============================================================================
+
+# List available profiles with descriptions
+list_profiles() {
+  local profiles_dir="${REPO_ROOT}/profiles"
+  if [ ! -d "$profiles_dir" ]; then
+    err "No profiles directory found at ${profiles_dir}"
+    exit 1
+  fi
+
+  info "Available profiles:"
+  echo ""
+  for profile_dir in "${profiles_dir}"/*/; do
+    [ -d "$profile_dir" ] || continue
+    local pname
+    pname=$(basename "$profile_dir")
+    local pdesc=""
+    if [ -f "${profile_dir}/PROFILE.md" ]; then
+      pdesc=$(parse_profile_field "${profile_dir}/PROFILE.md" "description")
+    fi
+    echo -e "  ${GREEN}${pname}${NC}  ${pdesc}"
+  done
+  echo ""
+  exit 0
+}
+
+# Parse a single field from PROFILE.md YAML frontmatter
+parse_profile_field() {
+  local file="$1"
+  local field="$2"
+  local in_frontmatter=false
+  local value=""
+
+  while IFS= read -r line || [ -n "$line" ]; do
+    if [ "$in_frontmatter" = false ]; then
+      if [ "$line" = "---" ]; then
+        in_frontmatter=true
+        continue
+      fi
+    else
+      if [ "$line" = "---" ]; then
+        break
+      fi
+      # Match "field: value" or "field: >-" etc.
+      if echo "$line" | grep -q "^${field}:"; then
+        value=$(echo "$line" | sed "s/^${field}:[[:space:]]*//" | sed 's/[[:space:]]*$//')
+        echo "$value"
+        return
+      fi
+    fi
+  done < "$file"
+  echo "$value"
+}
+
+# Parse PROFILE.md YAML frontmatter
+# Sets: PROFILE_NAME, PROFILE_DESCRIPTION, PROFILE_AGENTS, PROFILE_AGENT_SKILLS, PROFILE_ALL_SKILLS
+parse_profile() {
+  local profile_path="$1"
+
+  if [ ! -f "$profile_path" ]; then
+    err "Profile file not found: ${profile_path}"
+    exit 1
+  fi
+
+  PROFILE_NAME=""
+  PROFILE_DESCRIPTION=""
+  PROFILE_AGENTS=()
+  PROFILE_AGENT_SKILLS=()
+  PROFILE_ALL_SKILLS=()
+
+  local in_frontmatter=false
+  local current_section=""     # "agents" | "agent_skills"
+  local current_agent=""       # current agent key under agent_skills
+  local -A all_skills_set=()   # for deduplication
+
+  while IFS= read -r line || [ -n "$line" ]; do
+    if [ "$in_frontmatter" = false ]; then
+      if [ "$line" = "---" ]; then
+        in_frontmatter=true
+        continue
+      fi
+    else
+      if [ "$line" = "---" ]; then
+        break
+      fi
+
+      # Skip empty lines and comments
+      [[ -z "$line" ]] && continue
+      [[ "$line" == \#* ]] && continue
+
+      # Top-level fields (no leading whitespace)
+      if [[ "$line" =~ ^[a-z] ]]; then
+        current_section=""
+        current_agent=""
+
+        if [[ "$line" =~ ^name:\ *(.*) ]]; then
+          PROFILE_NAME="${BASH_REMATCH[1]}"
+        elif [[ "$line" =~ ^description:\ *(.*) ]]; then
+          PROFILE_DESCRIPTION="${BASH_REMATCH[1]}"
+        elif [[ "$line" == "agents:" ]]; then
+          current_section="agents"
+        elif [[ "$line" == "agent_skills:" ]]; then
+          current_section="agent_skills"
+        fi
+        continue
+      fi
+
+      # List items under agents: (  - agent-name)
+      if [ "$current_section" = "agents" ]; then
+        if [[ "$line" =~ ^[[:space:]]+-[[:space:]]+(.*) ]]; then
+          local agent_name="${BASH_REMATCH[1]}"
+          agent_name=$(echo "$agent_name" | xargs)  # trim
+          PROFILE_AGENTS+=("$agent_name")
+        fi
+        continue
+      fi
+
+      # agent_skills section
+      if [ "$current_section" = "agent_skills" ]; then
+        # Agent key line (  agent-name:) — may have [] for empty list
+        if [[ "$line" =~ ^[[:space:]]+([a-z][a-z0-9-]*):(.*)$ ]]; then
+          current_agent="${BASH_REMATCH[1]}"
+          local rest="${BASH_REMATCH[2]}"
+          rest=$(echo "$rest" | xargs)
+          # Handle inline empty list: "build: []"
+          if [ "$rest" = "[]" ]; then
+            PROFILE_AGENT_SKILLS["$current_agent"]=""
+          fi
+          continue
+        fi
+        # Skill list item (    - skill-name)
+        if [ -n "$current_agent" ] && [[ "$line" =~ ^[[:space:]]+-[[:space:]]+(.*) ]]; then
+          local skill_name="${BASH_REMATCH[1]}"
+          skill_name=$(echo "$skill_name" | xargs)  # trim
+          local existing="${PROFILE_AGENT_SKILLS[$current_agent]:-}"
+          if [ -n "$existing" ]; then
+            PROFILE_AGENT_SKILLS["$current_agent"]="${existing} ${skill_name}"
+          else
+            PROFILE_AGENT_SKILLS["$current_agent"]="${skill_name}"
+          fi
+          all_skills_set["$skill_name"]=1
+        fi
+        continue
+      fi
+    fi
+  done < "$profile_path"
+
+  # Build PROFILE_ALL_SKILLS from the union set
+  for skill in "${!all_skills_set[@]}"; do
+    PROFILE_ALL_SKILLS+=("$skill")
+  done
+
+  # Sort for deterministic output
+  IFS=$'\n' PROFILE_ALL_SKILLS=($(sort <<<"${PROFILE_ALL_SKILLS[*]}")); unset IFS
+}
+
+# Validate that all agents and skills referenced in the profile exist
+validate_profile() {
+  local errors=0
+
+  # Validate agents
+  for agent in "${PROFILE_AGENTS[@]}"; do
+    if [ ! -d "${AGENTS_DIR}/${agent}" ]; then
+      err "Profile references nonexistent agent: '${agent}'"
+      errors=$((errors + 1))
+    fi
+  done
+
+  # Validate skills
+  for skill in "${PROFILE_ALL_SKILLS[@]}"; do
+    if [ ! -d "${REPO_ROOT}/skills/${skill}" ]; then
+      err "Profile references nonexistent skill: '${skill}'"
+      errors=$((errors + 1))
+    fi
+  done
+
+  # Validate agent_skills keys that are agents (not build/plan) exist in agents list
+  for agent in "${!PROFILE_AGENT_SKILLS[@]}"; do
+    if [ "$agent" = "build" ] || [ "$agent" = "plan" ]; then
+      continue  # orchestrators don't have agent.md
+    fi
+    local found=false
+    for a in "${PROFILE_AGENTS[@]}"; do
+      if [ "$a" = "$agent" ]; then
+        found=true
+        break
+      fi
+    done
+    if [ "$found" = false ]; then
+      err "agent_skills references agent '${agent}' not listed in agents:"
+      errors=$((errors + 1))
+    fi
+  done
+
+  if [ "$errors" -gt 0 ]; then
+    err "Profile validation failed with ${errors} error(s)"
+    exit 1
+  fi
+
+  ok "Profile '${PROFILE_NAME}' validated (${#PROFILE_AGENTS[@]} agents, ${#PROFILE_ALL_SKILLS[@]} skills)"
+}
+
+# Read skill description from SKILL.md frontmatter
+get_skill_description() {
+  local skill_name="$1"
+  local skill_md="${REPO_ROOT}/skills/${skill_name}/SKILL.md"
+  if [ -f "$skill_md" ]; then
+    parse_profile_field "$skill_md" "description"
+  else
+    echo "(no description)"
+  fi
+}
+
+# Inject profile skills into an installed agent.md
+# Adds permission.skill entries and appends Profile Skills section
+inject_profile_skills() {
+  local agent_md="$1"
+  local agent_name="$2"
+  local profile_name="$3"
+
+  if [ ! -f "$agent_md" ]; then
+    return
+  fi
+
+  local skills_str="${PROFILE_AGENT_SKILLS[$agent_name]:-}"
+  if [ -z "$skills_str" ]; then
+    return
+  fi
+
+  # Read the agent's existing base skills from source (to know what's already allowed)
+  local -A existing_skills=()
+  local in_frontmatter=false
+  local in_skill_section=false
+  while IFS= read -r line || [ -n "$line" ]; do
+    if [ "$in_frontmatter" = false ]; then
+      if [ "$line" = "---" ]; then
+        in_frontmatter=true
+        continue
+      fi
+    else
+      if [ "$line" = "---" ]; then
+        break
+      fi
+      # Detect skill: section under permission:
+      if [[ "$line" =~ ^[[:space:]]+skill: ]]; then
+        in_skill_section=true
+        continue
+      fi
+      # Exit skill section on non-indented or different section
+      if [ "$in_skill_section" = true ]; then
+        if [[ "$line" =~ ^[[:space:]]{4}[a-z\"*] ]]; then
+          # Parse skill permission line: "    skill-name: allow"
+          local sname
+          sname=$(echo "$line" | sed 's/^[[:space:]]*//' | sed 's/:.*//' | sed 's/"//g')
+          existing_skills["$sname"]=1
+        else
+          if [[ ! "$line" =~ ^[[:space:]]*$ ]]; then
+            in_skill_section=false
+          fi
+        fi
+      fi
+    fi
+  done < "$agent_md"
+
+  # Determine which skills need to be added (not already in base)
+  local -a new_skills=()
+  for skill in $skills_str; do
+    if [ -z "${existing_skills[$skill]+x}" ]; then
+      new_skills+=("$skill")
+    fi
+  done
+
+  if [ ${#new_skills[@]} -eq 0 ]; then
+    return
+  fi
+
+  # Inject permission.skill entries into frontmatter
+  # Find the closing --- of frontmatter and the last skill: entry before it
+  local tmp_file="${agent_md}.tmp"
+  local injected=false
+  local in_fm=false
+  local in_sk=false
+  local last_skill_line=""
+
+  # Strategy: find the last "allow" or "deny" line in the skill: section,
+  # and insert new entries after it
+  while IFS= read -r line || [ -n "$line" ]; do
+    echo "$line"
+
+    if [ "$in_fm" = false ]; then
+      if [ "$line" = "---" ]; then
+        in_fm=true
+      fi
+      continue
+    fi
+
+    if [ "$line" = "---" ]; then
+      break
+    fi
+
+    if [[ "$line" =~ ^[[:space:]]+skill: ]]; then
+      in_sk=true
+      continue
+    fi
+
+    if [ "$in_sk" = true ]; then
+      if [[ "$line" =~ ^[[:space:]]{4}[a-z\"*] ]]; then
+        last_skill_line="$line"
+      else
+        if [[ ! "$line" =~ ^[[:space:]]*$ ]]; then
+          # We've left the skill section — inject before this line
+          if [ "$injected" = false ]; then
+            for skill in "${new_skills[@]}"; do
+              echo "    ${skill}: allow"
+            done
+            injected=true
+          fi
+          in_sk=false
+        fi
+      fi
+    fi
+  done < "$agent_md" > /dev/null
+
+  # Now do the actual file rewrite
+  {
+    local in_fm2=false
+    local in_sk2=false
+    local injected2=false
+    local past_frontmatter=false
+
+    while IFS= read -r line || [ -n "$line" ]; do
+      if [ "$past_frontmatter" = true ]; then
+        echo "$line"
+        continue
+      fi
+
+      if [ "$in_fm2" = false ]; then
+        echo "$line"
+        if [ "$line" = "---" ]; then
+          in_fm2=true
+        fi
+        continue
+      fi
+
+      # Closing frontmatter
+      if [ "$line" = "---" ]; then
+        # If we haven't injected yet (skill section was at the end)
+        if [ "$injected2" = false ] && [ "$in_sk2" = true ]; then
+          for skill in "${new_skills[@]}"; do
+            echo "    ${skill}: allow"
+          done
+          injected2=true
+        fi
+        echo "$line"
+        past_frontmatter=true
+        continue
+      fi
+
+      if [[ "$line" =~ ^[[:space:]]+skill: ]]; then
+        in_sk2=true
+        echo "$line"
+        continue
+      fi
+
+      if [ "$in_sk2" = true ]; then
+        if [[ "$line" =~ ^[[:space:]]{4}[a-z\"*] ]]; then
+          echo "$line"
+        else
+          if [[ ! "$line" =~ ^[[:space:]]*$ ]]; then
+            # Leaving skill section — inject new skills
+            if [ "$injected2" = false ]; then
+              for skill in "${new_skills[@]}"; do
+                echo "    ${skill}: allow"
+              done
+              injected2=true
+            fi
+            in_sk2=false
+            echo "$line"
+          else
+            echo "$line"
+          fi
+        fi
+      else
+        echo "$line"
+      fi
+    done < "$agent_md"
+
+    # Append Profile Skills section
+    echo ""
+    echo "<!-- BEGIN profile:${profile_name} -->"
+    echo "## Profile Skills (${profile_name})"
+    echo ""
+    echo "Additional skills available from your active profile. Load the relevant"
+    echo "skill when the task involves its domain."
+    echo ""
+    echo "| Skill | Description |"
+    echo "|-------|-------------|"
+    for skill in "${new_skills[@]}"; do
+      local desc
+      desc=$(get_skill_description "$skill")
+      echo "| \`${skill}\` | ${desc} |"
+    done
+    echo "<!-- END profile:${profile_name} -->"
+  } > "$tmp_file"
+
+  mv "$tmp_file" "$agent_md"
+}
+
+# Strip old profile markers from an installed file
+strip_profile_markers() {
+  local file="$1"
+  if [ ! -f "$file" ]; then
+    return
+  fi
+
+  # Remove profile skills section (<!-- BEGIN profile:* --> to <!-- END profile:* -->)
+  if grep -q "<!-- BEGIN profile:" "$file" 2>/dev/null; then
+    sed -i '/<!-- BEGIN profile:/,/<!-- END profile:/d' "$file"
+  fi
+}
+
+# Strip profile-injected permission.skill entries from an agent.md
+# This is done by comparing against the source agent.md
+strip_profile_permissions() {
+  local installed_md="$1"
+  local source_md="$2"
+
+  if [ ! -f "$installed_md" ] || [ ! -f "$source_md" ]; then
+    return
+  fi
+
+  # Re-copy the source agent.md to reset permissions
+  cp "$source_md" "$installed_md"
+}
+
+# Apply prompt overlays from profile
+apply_prompt_overlays() {
+  local target="$1"
+  local profile_dir="$2"
+  local profile_name="$3"
+
+  for prompt_name in build plan; do
+    local overlay="${profile_dir}/prompts/${prompt_name}.md"
+    local dest="${target}/prompts/${prompt_name}.md"
+
+    if [ ! -f "$overlay" ] || [ ! -f "$dest" ]; then
+      continue
+    fi
+
+    # Strip old overlay if present
+    if grep -q "<!-- BEGIN profile:" "$dest" 2>/dev/null; then
+      sed -i '/<!-- BEGIN profile:/,/<!-- END profile:/d' "$dest"
+    fi
+
+    # Append overlay with markers
+    {
+      echo ""
+      echo "<!-- BEGIN profile:${profile_name} -->"
+      cat "$overlay"
+      echo ""
+      echo "<!-- END profile:${profile_name} -->"
+    } >> "$dest"
+
+    ok "Applied prompt overlay: ${prompt_name}.md"
+  done
+}
 
 # ============================================================================
 # Cross-platform SHA-256 hash utility
@@ -147,6 +623,9 @@ write_manifest() {
     echo "source_url=${REPO_URL}"
     echo "installed_at=${installed_at}"
     echo "installed_agents=${agents_csv}"
+    if [ -n "${PROFILE_NAME:-}" ]; then
+      echo "profile=${PROFILE_NAME}"
+    fi
     if [ "${USE_LINK:-}" = "link" ]; then
       echo "mode=link"
     else
@@ -169,6 +648,7 @@ MANIFEST_URL=""
 MANIFEST_AT=""
 MANIFEST_AGENTS_CSV=""
 MANIFEST_MODE=""
+MANIFEST_PROFILE=""
 
 read_manifest() {
   local manifest_path="$1"
@@ -179,6 +659,7 @@ read_manifest() {
   MANIFEST_AT=""
   MANIFEST_AGENTS_CSV=""
   MANIFEST_MODE=""
+  MANIFEST_PROFILE=""
 
   if [ ! -f "$manifest_path" ]; then
     return 1
@@ -205,6 +686,9 @@ read_manifest() {
         ;;
       mode=*)
         MANIFEST_MODE="${line#mode=}"
+        ;;
+      profile=*)
+        MANIFEST_PROFILE="${line#profile=}"
         ;;
       \[*)
         # Parse file entry: [tier] path sha256=hash
@@ -330,6 +814,11 @@ show_status() {
   echo -e "  Source URL:        ${MANIFEST_URL}"
   echo -e "  Installed at:      ${MANIFEST_AT}"
   echo -e "  Installed agents:  ${MANIFEST_AGENTS_CSV}"
+  if [ -n "${MANIFEST_PROFILE}" ]; then
+    echo -e "  Active profile:    ${CYAN}${MANIFEST_PROFILE}${NC}"
+  else
+    echo -e "  Active profile:    ${YELLOW}(none)${NC}"
+  fi
   echo -e "  Install mode:      ${MANIFEST_MODE}"
   echo ""
 
@@ -1021,6 +1510,7 @@ usage() {
   cat <<EOF
 Usage: $(basename "$0") <agent-name>... [--project|--global|--link]
        $(basename "$0") --all [--project|--global|--link]
+       $(basename "$0") --profile <name> [--project|--global|--link]
        $(basename "$0") --status [--project|--global]
        $(basename "$0") --update [--dry-run] [--only=TYPE,...] [--agent=NAME]
        $(basename "$0") --rollback [--project|--global]
@@ -1032,7 +1522,9 @@ Arguments:
   agent-name    One or more agent names to install (e.g., git-ops docs)
 
 Install Options:
-  --all, -a     Install all available agents
+  --all, -a     Install all available agents (shorthand for --profile default)
+  --profile <n> Install using a named profile (e.g., default, sol-dev)
+  --profiles    List available profiles with descriptions
   --project     Install to .opencode/ in the current directory (default)
   --global      Install to ~/.config/opencode/
   --link        Symlink instead of copy (for development, local only)
@@ -1043,6 +1535,7 @@ Install Options:
 Update Options:
   --status      Show installed version, latest version, and per-file status
   --update      Update installation to latest version (creates backup first)
+                When used with --profile, switches to the specified profile
   --dry-run     Show what --update would change without modifying anything
   --only=TYPE   Update only specific resource types (comma-separated)
                 Types: tools, commands, skills, prompts, agents, configs
@@ -1050,27 +1543,35 @@ Update Options:
   --rollback    Restore the most recent backup
 
 Remote install (pipe via curl):
-  curl -fsSL https://raw.githubusercontent.com/kunallimaye/lib-agents/main/install.sh | bash -s -- git-ops docs
+  curl -fsSL https://raw.githubusercontent.com/kunallimaye/lib-agents/main/install.sh | bash -s -- --profile default
   curl -fsSL https://raw.githubusercontent.com/kunallimaye/lib-agents/main/install.sh | bash -s -- --all --global
   curl -fsSL https://raw.githubusercontent.com/kunallimaye/lib-agents/main/install.sh | bash -s -- --list
 
 Local install:
-  $(basename "$0") git-ops                  # Install one agent to current project
-  $(basename "$0") git-ops docs             # Install multiple agents
-  $(basename "$0") git-ops docs --global    # Install multiple agents globally
-  $(basename "$0") --all                    # Install all agents
-  $(basename "$0") --all --global           # Install all agents globally
-  $(basename "$0") git-ops --link           # Symlink for development
-  $(basename "$0") --list                   # List available agents
-  $(basename "$0") git-ops docs --check     # Check prerequisites only
+  $(basename "$0") --profile default         # Install with default profile
+  $(basename "$0") --all                     # Same as --profile default
+  $(basename "$0") git-ops                   # Install one agent (no profile)
+  $(basename "$0") git-ops docs              # Install multiple agents
+  $(basename "$0") git-ops docs --global     # Install multiple agents globally
+  $(basename "$0") --all --global            # Install all agents globally
+  $(basename "$0") git-ops --link            # Symlink for development
+  $(basename "$0") --list                    # List available agents
+  $(basename "$0") --profiles                # List available profiles
+  $(basename "$0") git-ops docs --check      # Check prerequisites only
+
+Profile management:
+  $(basename "$0") --profile default         # Install with default profile
+  $(basename "$0") --profiles                # List available profiles
+  $(basename "$0") --status                  # Show active profile and status
+  $(basename "$0") --profile default --update  # Switch to/re-apply profile
 
 Update & status:
-  $(basename "$0") --status                 # Show installation status
-  $(basename "$0") --update --dry-run       # Preview what would change
-  $(basename "$0") --update                 # Update all files
-  $(basename "$0") --update --only=skills   # Update only skills
-  $(basename "$0") --update --agent=git-ops # Update only git-ops agent
-  $(basename "$0") --rollback               # Restore from latest backup
+  $(basename "$0") --status                  # Show installation status
+  $(basename "$0") --update --dry-run        # Preview what would change
+  $(basename "$0") --update                  # Update all files
+  $(basename "$0") --update --only=skills    # Update only skills
+  $(basename "$0") --update --agent=git-ops  # Update only git-ops agent
+  $(basename "$0") --rollback                # Restore from latest backup
 
 Sidecar convention:
   AGENTS.local.md   If this file exists in the project root, its contents are
@@ -1162,8 +1663,9 @@ check_prerequisites() {
   return 0
 }
 
-# Install ALL shared resources (tools, skills, commands) from centralized dirs.
+# Install shared resources (tools, skills, commands) from centralized dirs.
 # Called once regardless of how many agents are installed.
+# When a profile is active, only installs skills from PROFILE_ALL_SKILLS.
 install_shared_resources() {
   local target="$1"
   local use_link="$2"
@@ -1215,23 +1717,47 @@ install_shared_resources() {
     done
   fi
 
-  # Install ALL skills from top-level skills/
+  # Install skills — selective when profile is active, all otherwise
   if [ -d "${REPO_ROOT}/skills" ]; then
-    for skill_dir in "${REPO_ROOT}/skills"/*/; do
-      if [ -d "$skill_dir" ] && [ -f "${skill_dir}/SKILL.md" ]; then
-        local skill_name=$(basename "$skill_dir")
-        local skill_dest_dir="${target}/skills/${skill_name}"
-        mkdir -p "$skill_dest_dir"
-        if [ "$use_link" = true ]; then
-          ln -sf "$(realpath "${skill_dir}/SKILL.md")" "${skill_dest_dir}/SKILL.md"
-          ok "Linked skill -> ${skill_name}"
-        else
-          cp "${skill_dir}/SKILL.md" "${skill_dest_dir}/SKILL.md"
-          ok "Copied skill -> ${skill_name}"
+    if [ -n "${PROFILE_NAME:-}" ] && [ ${#PROFILE_ALL_SKILLS[@]} -gt 0 ]; then
+      # Profile mode: install only skills from UNION(agent_skills)
+      info "Profile '${PROFILE_NAME}': installing ${#PROFILE_ALL_SKILLS[@]} of $(ls -d "${REPO_ROOT}/skills"/*/ 2>/dev/null | wc -l | xargs) skills"
+      for skill_name in "${PROFILE_ALL_SKILLS[@]}"; do
+        local skill_dir="${REPO_ROOT}/skills/${skill_name}"
+        if [ -d "$skill_dir" ] && [ -f "${skill_dir}/SKILL.md" ]; then
+          local skill_dest_dir="${target}/skills/${skill_name}"
+          mkdir -p "$skill_dest_dir"
+          if [ "$use_link" = true ]; then
+            ln -sf "$(realpath "${skill_dir}/SKILL.md")" "${skill_dest_dir}/SKILL.md"
+            ok "Linked skill -> ${skill_name}"
+          else
+            cp "${skill_dir}/SKILL.md" "${skill_dest_dir}/SKILL.md"
+            ok "Copied skill -> ${skill_name}"
+          fi
+          record_file "${skill_dest_dir}/SKILL.md" "shared"
         fi
-        record_file "${skill_dest_dir}/SKILL.md" "shared"
-      fi
-    done
+      done
+    elif [ -n "${PROFILE_NAME:-}" ] && [ ${#PROFILE_ALL_SKILLS[@]} -eq 0 ]; then
+      # Profile with no skills (unlikely but handle gracefully)
+      info "Profile '${PROFILE_NAME}': no skills to install"
+    else
+      # No profile: install ALL skills
+      for skill_dir in "${REPO_ROOT}/skills"/*/; do
+        if [ -d "$skill_dir" ] && [ -f "${skill_dir}/SKILL.md" ]; then
+          local skill_name=$(basename "$skill_dir")
+          local skill_dest_dir="${target}/skills/${skill_name}"
+          mkdir -p "$skill_dest_dir"
+          if [ "$use_link" = true ]; then
+            ln -sf "$(realpath "${skill_dir}/SKILL.md")" "${skill_dest_dir}/SKILL.md"
+            ok "Linked skill -> ${skill_name}"
+          else
+            cp "${skill_dir}/SKILL.md" "${skill_dest_dir}/SKILL.md"
+            ok "Copied skill -> ${skill_name}"
+          fi
+          record_file "${skill_dest_dir}/SKILL.md" "shared"
+        fi
+      done
+    fi
   fi
 
   # Install ALL prompts from top-level prompts/
@@ -1434,6 +1960,8 @@ DRY_RUN=false
 DO_ROLLBACK=false
 ONLY_FILTER=""
 AGENT_FILTER=""
+DO_LIST_PROFILES=false
+PROFILE_ARG=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -1443,6 +1971,19 @@ while [ $# -gt 0 ]; do
     --list|-l)
       ensure_agents_source
       list_agents
+      ;;
+    --profiles)
+      DO_LIST_PROFILES=true
+      shift
+      ;;
+    --profile)
+      shift
+      if [ $# -eq 0 ]; then
+        err "--profile requires a profile name"
+        exit 1
+      fi
+      PROFILE_ARG="$1"
+      shift
       ;;
     --project)
       MODE="project"
@@ -1521,6 +2062,12 @@ resolve_project_root() {
   esac
 }
 
+# Handle --profiles command
+if [ "$DO_LIST_PROFILES" = true ]; then
+  ensure_agents_source
+  list_profiles
+fi
+
 # Handle --status command (doesn't require agent names or source)
 if [ "$DO_STATUS" = true ]; then
   local_target=$(resolve_target)
@@ -1536,10 +2083,87 @@ if [ "$DO_ROLLBACK" = true ]; then
   exit 0
 fi
 
-# Handle --update command
+# Handle --update command (with optional --profile for switching)
 if [ "$DO_UPDATE" = true ]; then
   local_target=$(resolve_target)
   local_project_root=$(resolve_project_root)
+
+  # If --profile is specified with --update, do a profile switch
+  if [ -n "$PROFILE_ARG" ]; then
+    ensure_agents_source
+    switch_profile_path="${REPO_ROOT}/profiles/${PROFILE_ARG}/PROFILE.md"
+    if [ ! -f "$switch_profile_path" ]; then
+      err "Profile '${PROFILE_ARG}' not found. Use --profiles to list available profiles."
+      exit 1
+    fi
+    parse_profile "$switch_profile_path"
+    validate_profile
+
+    info "Switching to profile '${PROFILE_NAME}'..."
+
+    # Clean old profile artifacts from installed agent.md files
+    if [ -d "${local_target}/agents" ]; then
+      for agent_md in "${local_target}/agents"/*.md; do
+        [ -f "$agent_md" ] || continue
+        switch_agent_name=$(basename "$agent_md" .md)
+        # Reset agent.md to source version
+        if [ -f "${AGENTS_DIR}/${switch_agent_name}/agent.md" ]; then
+          cp "${AGENTS_DIR}/${switch_agent_name}/agent.md" "$agent_md"
+        fi
+      done
+    fi
+
+    # Strip old profile markers from prompts
+    for prompt_file in "${local_target}/prompts"/*.md; do
+      [ -f "$prompt_file" ] || continue
+      strip_profile_markers "$prompt_file"
+      # Re-copy base prompt
+      switch_prompt_name=$(basename "$prompt_file")
+      if [ -f "${REPO_ROOT}/prompts/${switch_prompt_name}" ]; then
+        cp "${REPO_ROOT}/prompts/${switch_prompt_name}" "$prompt_file"
+      fi
+    done
+
+    # Remove old skills directory and reinstall
+    if [ -d "${local_target}/skills" ]; then
+      rm -rf "${local_target}/skills"
+    fi
+
+    # Reset shared resources flag to force reinstall
+    SHARED_RESOURCES_INSTALLED=false
+    MANIFEST_ENTRIES=()
+    INSTALLED_AGENTS_LIST=()
+
+    # Install agents from profile
+    for agent_name in "${PROFILE_AGENTS[@]}"; do
+      install_agent "$agent_name" "$MODE" "$USE_LINK"
+    done
+
+    # Apply profile modifications to installed agent.md files
+    for agent_name in "${!PROFILE_AGENT_SKILLS[@]}"; do
+      if [ "$agent_name" = "build" ] || [ "$agent_name" = "plan" ]; then
+        continue
+      fi
+      switch_agent_md="${local_target}/agents/${agent_name}.md"
+      inject_profile_skills "$switch_agent_md" "$agent_name" "$PROFILE_NAME"
+    done
+
+    # Apply prompt overlays
+    switch_profile_dir="${REPO_ROOT}/profiles/${PROFILE_ARG}"
+    apply_prompt_overlays "$local_target" "$switch_profile_dir" "$PROFILE_NAME"
+
+    # Apply sidecar convention
+    apply_sidecar_convention "$(resolve_project_root)"
+
+    # Write manifest
+    write_manifest "$local_target"
+
+    echo ""
+    ok "Profile switched to '${PROFILE_NAME}'"
+    exit 0
+  fi
+
+  # Standard update (no profile switch)
   update_installation "$local_target" "$local_project_root" "$DRY_RUN" "$ONLY_FILTER" "$AGENT_FILTER"
   exit 0
 fi
@@ -1553,20 +2177,114 @@ fi
 # Download agent source if not available locally
 ensure_agents_source
 
-# Populate agent list from --all if requested
-if [ "$INSTALL_ALL" = true ]; then
-  for dir in "${AGENTS_DIR}"/*/; do
-    [ -d "$dir" ] && AGENT_NAMES+=("$(basename "$dir")")
+# Handle --profile install (fresh install with profile)
+if [ -n "$PROFILE_ARG" ]; then
+  profile_path="${REPO_ROOT}/profiles/${PROFILE_ARG}/PROFILE.md"
+  if [ ! -f "$profile_path" ]; then
+    err "Profile '${PROFILE_ARG}' not found. Use --profiles to list available profiles."
+    exit 1
+  fi
+
+  parse_profile "$profile_path"
+  validate_profile
+
+  info "Installing with profile '${PROFILE_NAME}' (${#PROFILE_AGENTS[@]} agents, ${#PROFILE_ALL_SKILLS[@]} skills)"
+  echo ""
+
+  # Install agents from profile
+  for agent_name in "${PROFILE_AGENTS[@]}"; do
+    check_prerequisites "$agent_name"
+
+    if [ "$CHECK_ONLY" = true ]; then
+      continue
+    fi
+
+    install_agent "$agent_name" "$MODE" "$USE_LINK"
   done
+
+  if [ "$CHECK_ONLY" = true ]; then
+    exit 0
+  fi
+
+  profile_target=$(resolve_target)
+
+  # Apply profile modifications to installed agent.md files
+  for agent_name in "${!PROFILE_AGENT_SKILLS[@]}"; do
+    # Skip orchestrators (build/plan) — they don't have agent.md
+    if [ "$agent_name" = "build" ] || [ "$agent_name" = "plan" ]; then
+      continue
+    fi
+    agent_md="${profile_target}/agents/${agent_name}.md"
+    inject_profile_skills "$agent_md" "$agent_name" "$PROFILE_NAME"
+  done
+
+  # Apply prompt overlays
+  profile_dir="${REPO_ROOT}/profiles/${PROFILE_ARG}"
+  apply_prompt_overlays "$profile_target" "$profile_dir" "$PROFILE_NAME"
+
+  # Write manifest
+  write_manifest "$profile_target"
+  exit 0
+fi
+
+# Populate agent list from --all if requested (shorthand for --profile default)
+if [ "$INSTALL_ALL" = true ]; then
+  # --all is now shorthand for --profile default
+  profile_path="${REPO_ROOT}/profiles/default/PROFILE.md"
+  if [ -f "$profile_path" ]; then
+    parse_profile "$profile_path"
+    validate_profile
+
+    info "Installing with profile '${PROFILE_NAME}' (${#PROFILE_AGENTS[@]} agents, ${#PROFILE_ALL_SKILLS[@]} skills)"
+    echo ""
+
+    for agent_name in "${PROFILE_AGENTS[@]}"; do
+      check_prerequisites "$agent_name"
+
+      if [ "$CHECK_ONLY" = true ]; then
+        continue
+      fi
+
+      install_agent "$agent_name" "$MODE" "$USE_LINK"
+    done
+
+    if [ "$CHECK_ONLY" = true ]; then
+      exit 0
+    fi
+
+    profile_target=$(resolve_target)
+
+    # Apply profile modifications to installed agent.md files
+    for agent_name in "${!PROFILE_AGENT_SKILLS[@]}"; do
+      if [ "$agent_name" = "build" ] || [ "$agent_name" = "plan" ]; then
+        continue
+      fi
+      agent_md="${profile_target}/agents/${agent_name}.md"
+      inject_profile_skills "$agent_md" "$agent_name" "$PROFILE_NAME"
+    done
+
+    # Apply prompt overlays
+    profile_dir="${REPO_ROOT}/profiles/default"
+    apply_prompt_overlays "$profile_target" "$profile_dir" "$PROFILE_NAME"
+
+    # Write manifest
+    write_manifest "$profile_target"
+    exit 0
+  else
+    # Fallback: no default profile, install all agents without profile
+    for dir in "${AGENTS_DIR}"/*/; do
+      [ -d "$dir" ] && AGENT_NAMES+=("$(basename "$dir")")
+    done
+  fi
 fi
 
 if [ ${#AGENT_NAMES[@]} -eq 0 ]; then
-  err "At least one agent name is required (or use --all)."
+  err "At least one agent name is required (or use --all / --profile <name>)."
   echo ""
   usage
 fi
 
-# Process each agent
+# Process each agent (non-profile mode)
 for AGENT_NAME in "${AGENT_NAMES[@]}"; do
   check_prerequisites "$AGENT_NAME"
 
