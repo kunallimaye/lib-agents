@@ -26,6 +26,9 @@ tools:
   git-ops-init: false
   git-ops-init_*: false
   git-status_*: false
+  # Disable pilot tools (handled by delegation to @pilot)
+  pilot-workspace_*: false
+  pilot-run_*: false
 permission:
   skill:
     "*": deny

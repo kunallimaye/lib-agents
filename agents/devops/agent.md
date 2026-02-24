@@ -24,6 +24,9 @@ tools:
   readme-analyze: false
   readme-scaffold: false
   readme-validate: false
+  # Disable pilot tools (handled by delegation to @pilot)
+  pilot-workspace_*: false
+  pilot-run_*: false
 permission:
   skill:
     "*": deny
