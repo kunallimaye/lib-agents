@@ -1,0 +1,3 @@
+# Dependencies for the pilot agent
+# Each line is an agent name that must be installed first
+git-ops

@@ -1,0 +1,6 @@
+{
+  "name": "opencode-pilot",
+  "version": "0.1.0",
+  "description": "Isolated experimentation agent for OpenCode TUI - hypothesis testing in ephemeral workspaces",
+  "dependencies": {}
+}
