@@ -166,8 +166,7 @@ These load automatically when the agent needs them, or you can reference them vi
 
 | Tool | Description |
 |------|-------------|
-| `git-conflict_detect` | Detect merge conflicts |
-| `git-conflict_list_files` | List conflicted files |
+| `git-conflict_detect` | Detect merge conflicts and list conflicted files |
 | `git-conflict_show` | Show conflict markers in a file |
 | `git-conflict_abort_merge` | Abort an in-progress merge |
 

@@ -62,7 +62,6 @@
         "pilot-workspace_*": false,
         "pilot-run_*": false,
         "branch-cleanup_prune": false,
-        "branch-cleanup_prune_remote": false,
         "devops-preflight_*": false,
         "readme-analyze": false,
         "readme-scaffold": false,

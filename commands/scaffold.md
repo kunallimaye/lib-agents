@@ -15,6 +15,7 @@ This is a project scaffolding workflow.
    - **Full CI/CD** (all of the above + Cloud Build + Terraform)
 3. If CI/CD is selected, confirm the user wants Terraform executed via Cloud
    Build (plan on PR, apply on merge).
-4. Run the appropriate scaffold tool exports (or `full_scaffold` for everything).
+4. Run the `scaffold` tool with the appropriate `components` parameter
+   (or omit `components` for everything).
 5. Show a summary of all files created/skipped.
 6. Follow the standard post-work protocol.

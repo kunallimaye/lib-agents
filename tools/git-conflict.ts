@@ -16,8 +16,8 @@ async function gitRun(args: string[]): Promise<string> {
 
 export const detect = tool({
   description:
-    "Detect if there are any merge conflicts in the working tree. " +
-    "Returns a summary of conflict status.",
+    "Detect merge conflicts in the working tree and list all conflicted files. " +
+    "Returns conflict status and the list of files with conflicts.",
   args: {},
   async execute() {
     // Check for unmerged paths
@@ -30,27 +30,12 @@ export const detect = tool({
     if (result.startsWith("Error:")) return result
 
     const files = result.split("\n").filter(Boolean)
-    return `Found ${files.length} file(s) with merge conflicts:\n${files.map((f) => `  - ${f}`).join("\n")}`
-  },
-})
-
-export const list_files = tool({
-  description:
-    "List all files that currently have merge conflicts.",
-  args: {},
-  async execute() {
-    const result = await gitRun(["diff", "--name-only", "--diff-filter=U"])
-
-    if (!result || result === "") {
-      return "No files with merge conflicts."
-    }
-
-    if (result.startsWith("Error:")) return result
-
-    const files = result.split("\n").filter(Boolean)
-    const lines = [`${files.length} file(s) with conflicts:`, ""]
+    const lines = [
+      `Found ${files.length} file(s) with merge conflicts:`,
+      "",
+    ]
     for (const f of files) {
-      lines.push(`  ${f}`)
+      lines.push(`  - ${f}`)
     }
     return lines.join("\n")
   },

@@ -250,16 +250,4 @@ export const prune = tool({
   },
 })
 
-export const prune_remote = tool({
-  description:
-    "Run git fetch --prune to clean up stale remote-tracking references. " +
-    "This removes local references to remote branches that no longer exist.",
-  args: {},
-  async execute() {
-    const result = await run(["git", "fetch", "--prune"])
-    if (!result.ok) {
-      return `Error pruning remote references: ${result.out}`
-    }
-    return result.out || "Remote-tracking references are up to date."
-  },
-})
+
