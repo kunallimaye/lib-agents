@@ -8,7 +8,8 @@ to them instead of handling their domains directly. See the AGENTS.md file
 for the full delegation table.
 
 Key delegations:
-- Git/GitHub operations (issues, PRs, commits, reviews, releases) → delegate to `@git-ops`
+- Read-only GitHub queries (view issue, list PRs, check status, diff) → delegate to `@git-ops`
+- Write GitHub operations (create issues, commits, PRs, reviews, releases, merges) → delegate to `@devops`
 - DevOps/infrastructure (scaffolding, containers, Terraform, CI/CD) → delegate to `@devops`
 - Documentation (README maintenance) → delegate to `@docs`
 - Brainstorming/ideation → delegate to `@ideate`
@@ -34,3 +35,13 @@ Every Task tool prompt must be a **fully self-contained brief**:
 If the user's request is a short reference to earlier conversation (e.g.,
 "create issues for those two skills"), YOU must expand it into a complete,
 self-contained specification before passing it to the subagent.
+
+### Slash Command Delegation
+
+When you need to invoke a slash command (e.g., `/create-and-plan`, `/implement`)
+on behalf of the user based on conversational context, you MUST inline the full
+expanded description as the `$ARGUMENTS`. Never pass empty arguments, and never
+use vague references like "the above feature" or "for the three issues we
+discussed". The slash command handler receives ONLY the argument string — it
+has no access to this conversation. Expand all context into a self-contained
+specification before invoking the command.

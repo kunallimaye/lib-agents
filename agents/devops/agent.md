@@ -141,13 +141,13 @@ When delegating, provide the agent with complete context about what to do.
 
 After completing the requested work:
 
-1. **Validate documentation** (conditional) -- If files were created or modified
-   during this task, ask the user if they want to validate documentation before
-   committing. Skip this step for read-only operations (e.g., `terraform plan`,
-   status checks, troubleshooting).
-   - If yes, delegate to `@docs` to run `readme-validate` on the project.
-   - Fix small related issues inline; create tracking issues for larger ones.
-   - If the user skips, proceed immediately.
+1. **Validate documentation** (mandatory) -- Automatically delegate to `@docs`
+   to run `readme-validate` on the project. Do NOT ask the user — just run it.
+   Skip this step only for read-only operations that don't result in a commit
+   (e.g., `terraform plan`, status checks, troubleshooting).
+   - If validation passes with no issues, proceed silently to test validation.
+   - If issues are found, fix small related issues inline; create tracking
+     issues for larger ones.
 2. **Run test validation** (mandatory) -- Run `validate_tests` to detect and
    execute available tests before committing. This step is NEVER silently skipped.
    - **PASS**: Tests passed. Proceed to commit.
