@@ -24,11 +24,54 @@
         "branch-cleanup_*": false,
         "readme-analyze": false,
         "readme-scaffold": false,
-        "readme-validate": false
+        "readme-validate": false,
+        "pilot-workspace_*": false,
+        "pilot-run_*": false
       }
     },
     "plan": {
-      "prompt": "{file:.opencode/prompts/plan.md}"
+      "prompt": "{file:.opencode/prompts/plan.md}",
+      "tools": {
+        "write": false,
+        "edit": false,
+        "scaffold_*": false,
+        "terraform_*": false,
+        "podman_*": false,
+        "cloudbuild_*": false,
+        "gcloud_*": false,
+        "troubleshoot_*": false,
+        "git-commit_*": false,
+        "git-conflict_*": false,
+        "git-branch_create": false,
+        "git-branch_delete_branch": false,
+        "git-branch_rename": false,
+        "git-branch_switch_branch": false,
+        "gh-issue_create": false,
+        "gh-issue_update": false,
+        "gh-issue_close": false,
+        "gh-issue_reopen": false,
+        "gh-issue_comment": false,
+        "gh-pr_create": false,
+        "gh-pr_merge": false,
+        "gh-pr_close": false,
+        "gh-pr_checkout": false,
+        "gh-release_*": false,
+        "gh-review_approve": false,
+        "gh-review_request_changes": false,
+        "gh-review_comment_on_pr": false,
+        "pilot-workspace_*": false,
+        "pilot-run_*": false,
+        "branch-cleanup_prune": false,
+        "branch-cleanup_prune_remote": false,
+        "devops-preflight_*": false,
+        "readme-analyze": false,
+        "readme-scaffold": false,
+        "readme-validate": false,
+        "git-ops-init_setup": false,
+        "git-ops-init_clearCache": false,
+        "git-ops-init_ensureEnvironment": false,
+        "git-ops-init_getEnvironmentReport": false
+      }
     }
   }
 }
