@@ -29,6 +29,8 @@ tools:
   git-ops-init: false
   git-ops-init_*: false
   git-status_*: false
+  # Disable agent workspace tools (handled by devops/git-ops)
+  agent_workspace_*: false
   readme-analyze: false
   readme-scaffold: false
   readme-validate: false

@@ -1,12 +1,20 @@
 import { tool } from "@opencode-ai/plugin"
 import { ensureEnvironment } from "./git-ops-init"
 
-async function ghRun(args: string[]): Promise<string> {
+const WORKSPACE_DESC =
+  "Path to an agent workspace (clone). When provided, gh commands run " +
+  "inside the workspace instead of the main working tree. Use the path " +
+  "returned by agent_workspace_create."
+
+async function ghRun(args: string[], workspace?: string): Promise<string> {
   const envErr = await ensureEnvironment()
   if (envErr) return envErr
 
   try {
-    const result = await Bun.$`gh ${args}`.text()
+    const cmd = workspace
+      ? Bun.$`gh ${args}`.cwd(workspace)
+      : Bun.$`gh ${args}`
+    const result = await cmd.text()
     return result.trim()
   } catch (e: any) {
     const stderr = e?.stderr?.toString?.()?.trim() || ""
@@ -44,6 +52,10 @@ export const create = tool({
       .string()
       .optional()
       .describe("Comma-separated GitHub usernames to request review from"),
+    workspace: tool.schema
+      .string()
+      .optional()
+      .describe(WORKSPACE_DESC),
   },
   async execute(args) {
     const flags: string[] = ["pr", "create", "--title", args.title, "--body", args.body]
@@ -55,7 +67,7 @@ export const create = tool({
     if (args.assignees) flags.push("--assignee", args.assignees)
     if (args.reviewers) flags.push("--reviewer", args.reviewers)
 
-    return await ghRun(flags)
+    return await ghRun(flags, args.workspace)
   },
 })
 
@@ -86,6 +98,10 @@ export const list = tool({
       .string()
       .optional()
       .describe("Search query to filter PRs"),
+    workspace: tool.schema
+      .string()
+      .optional()
+      .describe(WORKSPACE_DESC),
   },
   async execute(args) {
     const flags: string[] = [
@@ -104,7 +120,7 @@ export const list = tool({
     if (args.author) flags.push("--author", args.author)
     if (args.search) flags.push("--search", args.search)
 
-    const raw = await ghRun(flags)
+    const raw = await ghRun(flags, args.workspace)
     if (raw.startsWith("Error:") || raw.includes("FATAL:")) return raw
 
     try {
@@ -139,6 +155,10 @@ export const view = tool({
   description: "View a single pull request with full details including diff stats.",
   args: {
     number: tool.schema.number().describe("PR number"),
+    workspace: tool.schema
+      .string()
+      .optional()
+      .describe(WORKSPACE_DESC),
   },
   async execute(args) {
     if (args.number <= 0) return "Error: PR number must be a positive integer."
@@ -149,7 +169,7 @@ export const view = tool({
       String(args.number),
       "--json",
       "number,title,state,body,labels,assignees,reviewRequests,headRefName,baseRefName,additions,deletions,changedFiles,commits,comments,createdAt,mergedAt,url,author",
-    ])
+    ], args.workspace)
     if (raw.startsWith("Error:") || raw.includes("FATAL:")) return raw
 
     try {
@@ -206,6 +226,10 @@ export const merge = tool({
       .boolean()
       .optional()
       .describe("Delete the head branch after merging (default: false)"),
+    workspace: tool.schema
+      .string()
+      .optional()
+      .describe(WORKSPACE_DESC),
   },
   async execute(args) {
     if (args.number <= 0) return "Error: PR number must be a positive integer."
@@ -215,7 +239,7 @@ export const merge = tool({
     flags.push(`--${method}`)
     if (args.delete_branch) flags.push("--delete-branch")
 
-    return await ghRun(flags)
+    return await ghRun(flags, args.workspace)
   },
 })
 
@@ -227,15 +251,19 @@ export const close = tool({
       .string()
       .optional()
       .describe("Optional comment to add before closing"),
+    workspace: tool.schema
+      .string()
+      .optional()
+      .describe(WORKSPACE_DESC),
   },
   async execute(args) {
     if (args.number <= 0) return "Error: PR number must be a positive integer."
 
     if (args.comment) {
-      await ghRun(["pr", "comment", String(args.number), "--body", args.comment])
+      await ghRun(["pr", "comment", String(args.number), "--body", args.comment], args.workspace)
     }
 
-    return await ghRun(["pr", "close", String(args.number)])
+    return await ghRun(["pr", "close", String(args.number)], args.workspace)
   },
 })
 
@@ -243,9 +271,13 @@ export const checkout = tool({
   description: "Check out a pull request branch locally.",
   args: {
     number: tool.schema.number().describe("PR number to check out"),
+    workspace: tool.schema
+      .string()
+      .optional()
+      .describe(WORKSPACE_DESC),
   },
   async execute(args) {
     if (args.number <= 0) return "Error: PR number must be a positive integer."
-    return await ghRun(["pr", "checkout", String(args.number)])
+    return await ghRun(["pr", "checkout", String(args.number)], args.workspace)
   },
 })

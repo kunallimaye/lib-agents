@@ -29,6 +29,8 @@ tools:
   # Disable pilot tools (handled by delegation to @pilot)
   pilot-workspace_*: false
   pilot-run_*: false
+  # Disable agent workspace tools (handled by devops/git-ops)
+  agent_workspace_*: false
 permission:
   skill:
     "*": deny
