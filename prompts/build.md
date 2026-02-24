@@ -38,10 +38,27 @@ self-contained specification before passing it to the subagent.
 
 ### Slash Command Delegation
 
-When you need to invoke a slash command (e.g., `/create-and-plan`, `/implement`)
-on behalf of the user based on conversational context, you MUST inline the full
-expanded description as the `$ARGUMENTS`. Never pass empty arguments, and never
-use vague references like "the above feature" or "for the three issues we
-discussed". The slash command handler receives ONLY the argument string — it
-has no access to this conversation. Expand all context into a self-contained
-specification before invoking the command.
+When a slash command is invoked (by the user or by you), the `$ARGUMENTS`
+placeholder is the ONLY context the receiving agent gets. The agent has ZERO
+access to this conversation's history.
+
+**Your #1 job is to fill `$ARGUMENTS` with synthesized conversation context.**
+
+- If the user runs `/issue` after a brainstorming session, YOU synthesize
+  the brainstorming output into a complete feature specification and pass
+  it as `$ARGUMENTS`. The user should NEVER be asked to re-state what they
+  already discussed.
+- If the user runs `/implement` after discussing an issue, YOU fill in the
+  issue number.
+- If the user runs `/review` after linking a PR, YOU fill in the PR number.
+
+Rules:
+1. ALWAYS synthesize — scan the conversation for relevant context (decisions,
+   specifications, agent outputs, user requirements) and compile it into a
+   self-contained `$ARGUMENTS` string
+2. NEVER pass empty arguments — if a command arrives with empty `$ARGUMENTS`
+   and the conversation has relevant context, fill it in
+3. NEVER re-ask — if the information exists in this conversation, use it;
+   only ask the user if the conversation genuinely has no relevant context
+4. NEVER use vague references — "the above feature" or "what we discussed"
+   mean nothing to the receiving agent; inline the full details
