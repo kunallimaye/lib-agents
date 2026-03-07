@@ -28,6 +28,10 @@ Every task follows this sequence before work begins:
 5. Plan Check      ->  Implementation plan posted on the issue
 ```
 
+**CRITICAL**: After pre-flight, verify you are NOT on the default branch.
+The agent must never commit directly to main/master. If somehow on the
+default branch, STOP and re-run preflight.
+
 All checks must PASS before any work begins. If any check fails, stop and
 resolve the issue before proceeding.
 
@@ -74,30 +78,38 @@ Rules:
 
 ```
 Issue Created
-  |
+  │
   v
 Pre-flight Checks (issue, clean tree, workspace + branch, plan)
-  |
+  │
   v
 Work Execution (in isolated workspace — containers, infra, troubleshooting)
-  |
+  │
   v
 Test Validation (mandatory — PASS / FAIL / WARN — run in workspace)
-  |
+  │
   v
 Stage & Commit (via @git-ops with workspace path, conventional commit format)
-  |
+  │
   v
 Create PR (via @git-ops with workspace path, with "Closes #N" in body)
-  |         - Always set delete_branch: true
+  │         - Always set delete_branch: true
   v
-Destroy Workspace (agent_workspace_destroy)
-  |
+Self-Review PR (via @git-ops — diff analysis against review checklist)
+  │
+  ├── Clean ──────────────────────────┐
+  │                                   v
+  ├── Issues Found ──> Fix ──> Re-review (max 2 iterations)
+  │                               │
+  │                     ├── Clean ─┤
+  │                     │          v
+  │                     └── Still issues ──> Leave PR open with comment
+  │                                          │
+  v                                          v
+Merge PR (squash, delete branch)      Destroy Workspace & Report
+  │
   v
-Review & Merge
-  |
-  v
-Post-merge Cleanup
+Destroy Workspace & Report
 ```
 
 ## Test Validation
@@ -133,6 +145,44 @@ The tool searches for test infrastructure in this order:
   found. Do you want to proceed without test validation?"
 - Skipping should be the exception, not the norm.
 
+## Self-Review Protocol
+
+After creating the PR, the agent MUST self-review before merging. This is
+delegated to `@git-ops` and is never skipped.
+
+### Process
+
+1. Delegate to `@git-ops` to get the full PR diff
+2. `@git-ops` analyzes the diff against the review checklist
+3. If issues are found:
+   - Fix them in the workspace (which must still be alive)
+   - Stage, commit, and push fixes via `@git-ops`
+   - Re-request a review from `@git-ops` on the updated PR
+   - Maximum **2 remediation iterations**
+4. If clean (or after successful remediation): merge via `@git-ops`
+   using squash merge with `delete_branch: true`
+5. If issues persist after 2 rounds: leave PR open with a review
+   comment listing remaining issues for manual review
+
+### Review Checklist
+
+The self-review checks for:
+
+- Code follows project conventions and style
+- No hardcoded secrets or credentials
+- Error handling is appropriate
+- No unnecessary complexity or duplication
+- Logic is correct and handles edge cases
+- Public APIs are documented
+- README updated if needed
+
+### Remediation Rules
+
+- The workspace MUST remain alive until the review loop completes
+- Each fix iteration requires a new commit (do not amend)
+- After 2 failed iterations, the agent MUST stop and leave the PR open
+- The agent MUST NOT skip the review or auto-approve without analysis
+
 ## Commit Message Convention
 
 Use conventional commits: `type(scope): description`
@@ -144,12 +194,13 @@ Use conventional commits: `type(scope): description`
 
 ## Post-merge Cleanup
 
-After a PR is merged, clean up to prevent branch accumulation:
+After a PR is merged (either via the self-review-merge loop or manually),
+clean up to prevent branch accumulation:
 
-1. Destroy workspace: `agent_workspace_destroy` (if not already destroyed)
+1. Destroy workspace: `agent_workspace_destroy` (if not already destroyed).
+   The workspace is kept alive during the review loop for remediation fixes,
+   and destroyed only after the PR is merged or the loop completes.
 2. Delete local branch: `git branch -d <branch>` (in the main repo)
 3. Prune remote refs: `git fetch --prune`
 
 Use the `/cleanup` command to list and prune stale merged branches.
-This is a separate step from the post-work protocol. Do NOT run cleanup
-immediately after PR creation -- wait until the PR is merged.
