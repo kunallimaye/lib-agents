@@ -109,6 +109,9 @@ Before performing ANY work, run `preflight` with the issue number. This:
 4. Creates or checks out a dedicated branch in the workspace
 5. Checks for an implementation plan on the issue
 
+**The branch step is mandatory and non-negotiable.** After preflight, you
+MUST be on a non-default branch. If the branch check fails, do NOT proceed.
+
 All checks must pass before work begins.
 
 - If the user provides an issue number, use it directly.
@@ -159,6 +162,8 @@ You MUST delegate to the appropriate agent for:
 - Creating and merging pull requests
 - Code reviews and releases
 - Stashing and unstashing changes
+- Self-reviewing PR diffs (get diff, analyze against review checklist, report findings)
+- Merging PRs after successful review (squash merge, delete branch)
 
 **When delegating to @git-ops, always include the workspace path** so it
 can operate in the correct isolated clone.
@@ -202,17 +207,43 @@ After completing the requested work:
    - Links back to the issue using `Closes #<number>` in the body
    - Uses `delete_branch: true` so the remote branch is cleaned up on merge
    - **Include the workspace path.**
-5. **Clean up workspace** -- Run `agent_workspace_destroy` to remove the
-   isolated clone from `/tmp/agent-*`.
-6. **Report back** -- Summarize what was done, the PR URL, and the linked issue.
+5. **Self-review the PR** (mandatory) -- Delegate to `@git-ops` to:
+   - Get the full PR diff
+   - Analyze the diff against the review checklist: code quality, correctness,
+     security (no hardcoded secrets), performance, error handling, documentation
+   - Return a list of findings or confirm the review is clean
+6. **Fix remediations** (max 2 iterations) -- If the self-review found issues:
+   - Fix the issues in the workspace (which is still alive)
+   - Stage, commit, and push the fixes (delegate to `@git-ops`)
+   - Re-request a review from `@git-ops` on the updated PR
+   - If issues remain after 2 remediation rounds, leave the PR open and add
+     a review comment listing the remaining issues for manual review
+   - If clean after any round, proceed to merge
+7. **Merge the PR** -- If the self-review is clean (or after successful
+   remediation), delegate to `@git-ops` to:
+   - Squash merge the PR
+   - Set `delete_branch: true` to clean up the remote branch
+   - If merge fails (e.g., conflicts, branch protection rules), report the
+     failure and leave the PR open
+8. **Clean up workspace** -- Run `agent_workspace_destroy` to remove the
+   isolated clone from `/tmp/agent-*`. Do NOT destroy the workspace until
+   the PR is merged or the review loop is complete.
+9. **Report back** -- Summarize what was done, the PR URL, the linked issue,
+   the review outcome, and the merge status.
 
 ## Safety Rules
 
+- **NEVER** commit or push to the default branch (main/master) directly.
+  All work MUST happen on a dedicated branch created during pre-flight.
+  If you find yourself on the default branch, STOP immediately.
 - **NEVER** skip the pre-flight protocol. It exists to prevent mistakes.
 - **NEVER** skip test validation silently. If tests fail or no test
   infrastructure exists, the user must explicitly confirm before proceeding.
 - **NEVER** operate on the main working tree. All work happens in the
   isolated workspace returned by preflight.
+- **NEVER** destroy the workspace until the PR is merged or the review
+  loop is complete (max 2 iterations). The workspace must remain alive
+  for remediation fixes.
 - **NEVER** run destructive commands (`rm -rf`, `podman system prune`, etc.)
   without explicit user approval.
 - **ALWAYS** show what will change before executing destructive operations.
