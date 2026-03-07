@@ -25,6 +25,7 @@ project's development workflow.
 | **Local dev** | `local-init` | `local-clean` | `local-build` | `local-run` | `local-test` | `local-lint` |
 | **Container dev** | `container-init` | `container-clean` | `container-build` | `container-run` | — | — |
 | **Cloud runtime** | `cloud-init` | `cloud-clean` | `cloud-build` | `cloud-deploy` | — | — |
+| **Logs** | — | `logs-clean` | — | — | — | `logs-list` / `logs-last` |
 
 ### Thin-wrapper Pattern
 
@@ -124,6 +125,28 @@ Must exclude:
 - `.env`, `.env.*` (secrets must not be baked into images)
 - `cicd/terraform/`, `cicd/cloudbuild*.yaml` (not needed in the image)
 - Language-specific artifacts (`node_modules/`, `__pycache__/`, `target/`, etc.)
+
+### Log Management Targets
+
+The scaffolded Makefile includes targets for managing per-run log files:
+
+| Target | Description |
+|--------|-------------|
+| `logs-list` | List recent log files (newest first, max 20) |
+| `logs-last` | Display contents of the most recent log file |
+| `logs-clean` | Remove all log files from `logs/` directory |
+
+Log files are created automatically by the scaffolded scripts. Each `make`
+target execution generates a timestamped log file in `logs/`:
+
+```
+logs/20260307-143022-local-build.log
+logs/20260307-143155-container-run.log
+logs/20260307-150000-cloud-deploy.log
+```
+
+These log files capture all stdout and stderr output from the command,
+making it easy to review past runs and diagnose failures.
 
 ## Per-language Patterns
 

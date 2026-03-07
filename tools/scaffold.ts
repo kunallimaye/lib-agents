@@ -60,7 +60,8 @@ function generateMakefile(_pt: ProjectType): string {
   return `.PHONY: help \\
   local-init local-clean local-build local-run local-test local-lint \\
   container-init container-clean container-build container-run \\
-  cloud-init cloud-build cloud-deploy cloud-clean
+  cloud-init cloud-build cloud-deploy cloud-clean \\
+  logs-list logs-last logs-clean
 
 help: ## Show this help
 \t@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \\
@@ -113,6 +114,17 @@ cloud-deploy: ## Deploy to cloud runtime (via Cloud Build)
 
 cloud-clean: ## Tear down cloud resources (via Cloud Build)
 \t@bash scripts/cloud.sh clean
+
+# ─── Logs ─────────────────────────────────────────────────────────────
+
+logs-list: ## List recent log files
+\t@ls -lt logs/*.log 2>/dev/null | head -20 || echo "No log files found"
+
+logs-last: ## Show the most recent log file
+\t@ls -t logs/*.log 2>/dev/null | head -1 | xargs cat 2>/dev/null || echo "No log files found"
+
+logs-clean: ## Remove all log files
+\t@rm -rf logs/*.log && echo "Cleaned log files" || true
 `
 }
 
@@ -168,6 +180,20 @@ confirm() {
   local prompt="\${1:-Are you sure?} [y/N] "
   read -r -p "\${prompt}" response
   [[ "\${response}" =~ ^[Yy]$ ]]
+}
+
+# ─── Log Capture ─────────────────────────────────────────────────────
+
+LOG_DIR="\${PROJECT_ROOT}/logs"
+mkdir -p "\${LOG_DIR}"
+
+# Start capturing all stdout/stderr to a per-run log file.
+# Usage: start_log <action-name>
+start_log() {
+  local action="\${1:-unknown}"
+  LOG_FILE="\${LOG_DIR}/$(date +%Y%m%d-%H%M%S)-\${action}.log"
+  exec > >(tee -a "\${LOG_FILE}") 2>&1
+  log_info "Logging to \${LOG_FILE}"
 }
 `
 }
@@ -234,6 +260,7 @@ function generateLocalSh(pt: ProjectType): string {
 SCRIPT_DIR="$(cd "$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "\${SCRIPT_DIR}/common.sh"
+start_log "local-\${1:-unknown}"
 
 init() {
   log_info "Initializing local dev environment..."
@@ -298,6 +325,7 @@ function generateContainerSh(pt: ProjectType): string {
 SCRIPT_DIR="$(cd "$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "\${SCRIPT_DIR}/common.sh"
+start_log "container-\${1:-unknown}"
 
 CONTAINER_PORT="\${CONTAINER_PORT:-${port}}"
 HOST_PORT="\${HOST_PORT:-\${CONTAINER_PORT}}"
@@ -357,6 +385,7 @@ function generateCloudSh(): string {
 SCRIPT_DIR="$(cd "$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "\${SCRIPT_DIR}/common.sh"
+start_log "cloud-\${1:-unknown}"
 
 AR_LOCATION="\${GCP_REGION}"
 AR_IMAGE="\${AR_LOCATION}-docker.pkg.dev/\${GCP_PROJECT}/\${AR_REPO}/\${IMAGE_NAME}:\${IMAGE_TAG}"
@@ -850,6 +879,7 @@ function gitignoreEntries(pt: ProjectType): string[] {
     "tmp/",
     ".cache/",
     "*.log",
+    "logs/",
   ]
 
   const perLang: Record<ProjectType, string[]> = {

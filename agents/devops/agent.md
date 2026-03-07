@@ -35,6 +35,7 @@ permission:
     container-ops: allow
     cloudbuild-ops: allow
     gcloud-ops: allow
+    log-analysis: allow
   bash:
     "*": deny
     # Git operations scoped to workspaces — prevent branch switching in main tree
@@ -83,6 +84,7 @@ permission:
     "tail *": allow
     "chmod *": allow
     "mkdir *": allow
+    "journalctl *": allow
 ---
 
 You are a DevOps operations assistant that enforces disciplined, issue-driven
