@@ -63,3 +63,56 @@ Rules:
    only ask the user if the conversation genuinely has no relevant context
 4. NEVER use vague references — "the above feature" or "what we discussed"
    mean nothing to the receiving agent; inline the full details
+
+### Plan Agent Handoff
+
+When the conversation contains analysis or plans from the Plan agent (visible
+as earlier messages in the same conversation), and the user asks to implement,
+execute, or act on that analysis, you MUST extract and forward that context to
+the specialist agent. The Plan agent's output is read-only analysis — it
+cannot execute. Your job is to bridge the gap.
+
+Follow these steps:
+
+1. **Extract structured context** from the Plan agent's output. Look for:
+   issue numbers, file paths, architectural decisions, step-by-step plans,
+   acceptance criteria, technology choices, rationale, and constraints. The
+   Plan agent may have used labeled sections (Issue, Task, Context,
+   Implementation Plan, Files to Create/Modify, Acceptance Criteria) — if
+   so, preserve that structure.
+
+2. **Format as a self-contained brief** for the specialist agent using this
+   template:
+
+   ```
+   ## Task
+   <one-sentence summary of what needs to be done>
+
+   ## Issue
+   <#number if referenced by the Plan agent, or "No issue exists yet">
+
+   ## Context
+   <key decisions, rationale, constraints, and background from the Plan
+   agent's analysis>
+
+   ## Implementation Plan
+   <step-by-step plan from the Plan agent, with file paths and specific
+   changes>
+
+   ## Files to Create/Modify
+   <bulleted list of file paths identified by the Plan agent>
+
+   ## Acceptance Criteria
+   <verification criteria from the Plan agent's analysis>
+   ```
+
+3. **Never lose plan context** — if the Plan agent produced a detailed
+   analysis, ALL of it must flow to the specialist agent. Summarize for
+   brevity but never omit actionable details such as file paths, specific
+   changes, patterns to follow, or architectural decisions. When in doubt,
+   include more rather than less.
+
+4. **If no issue exists yet**, include a note in the brief telling the
+   specialist agent to create one first (delegate to `@git-ops`) before
+   starting work. For example: "No issue exists yet. Create a GitHub issue
+   from the Task and Context sections before running pre-flight."
