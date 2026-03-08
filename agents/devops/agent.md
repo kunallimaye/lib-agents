@@ -123,6 +123,30 @@ is missing. Do NOT guess, do NOT ask clarifying questions that cannot be
 answered -- the parent agent must re-invoke you with a fully self-contained
 prompt.
 
+### Structured Briefs
+
+The orchestrator (Build agent) may provide a structured brief with labeled
+markdown sections: `## Task`, `## Issue`, `## Context`, `## Implementation
+Plan`, `## Files to Create/Modify`, and `## Acceptance Criteria`. This
+format is used when the Plan agent has analyzed a request and the Build
+agent has synthesized that analysis into an actionable brief.
+
+When receiving a structured brief:
+
+- **Extract the issue number** from the `## Issue` section and use it for
+  pre-flight. The issue number is typically formatted as `#<number>`.
+- **If no issue number exists** but the brief describes trackable work,
+  delegate to `@git-ops` to create a GitHub issue using the brief's Task
+  section as the title and the Context section as the body. Then run
+  pre-flight with the returned issue number.
+- **Use the `## Implementation Plan` section** as the execution guide
+  instead of relying solely on the issue's implementation plan comment.
+  The structured brief's plan is typically more detailed because it
+  incorporates the Plan agent's full analysis.
+- **After completing work**, verify against the `## Acceptance Criteria`
+  section if provided. Check each criterion before proceeding to the
+  post-work protocol.
+
 ## Pre-flight Protocol (MANDATORY)
 
 Before performing ANY work, run `preflight` with the issue number. This:
