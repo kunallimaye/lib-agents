@@ -1,6 +1,6 @@
 import { tool } from "@opencode-ai/plugin"
 import { existsSync, readdirSync, readFileSync, statSync } from "fs"
-import { join, basename } from "path"
+import { join } from "path"
 
 // ─── Shared Helpers ─────────────────────────────────────────────────
 
