@@ -72,7 +72,7 @@ cicd/
 | `podman` | `build`, `run_container`, `ps`, `images`, `logs`, `stop`, `rm`, `inspect`, `exec` | Container management |
 | `terraform` | `init`, `validate`, `fmt`, `plan`, `apply`, `destroy`, `state_list`, `state_show`, `output`, `workspace_list`, `workspace_select` | Infrastructure as code |
 | `gcloud` | `auth_status`, `project_info`, `compute_list`, `gke_clusters`, `run_services`, `logs_read`, `iam_roles`, `config_list`, `services_list` | Google Cloud operations |
-| `troubleshoot` | `check_ports`, `check_dns`, `check_connectivity`, `system_info`, `process_list`, `disk_usage`, `container_health` | System diagnostics |
+| `troubleshoot` | `check_ports`, `check_dns`, `check_connectivity`, `system_info`, `process_list`, `disk_usage`, `container_health`, `discover_sources`, `read_logs`, `extract_errors`, `compare_logs`, `discover_prometheus`, `query_metrics`, `query_metrics_range`, `check_targets` | System diagnostics, log analysis, Prometheus metrics |
 | `branch-cleanup` | `list_stale`, `prune` | Stale branch cleanup |
 
 ## Commands
@@ -83,6 +83,7 @@ cicd/
 | `/scaffold` | Scaffold Makefile, scripts, container files, Cloud Build, Terraform |
 | `/deploy` | Build and deploy containers or infrastructure (Makefile-aware) |
 | `/infra` | Manage Terraform and GCP infrastructure |
+| `/troubleshoot` | Troubleshoot issues using logs, Prometheus metrics, and system diagnostics |
 | `/cleanup` | List and prune stale merged branches |
 
 ## Skills
@@ -94,6 +95,7 @@ cicd/
 | `container-ops` | Podman best practices and patterns |
 | `cloudbuild-ops` | Cloud Build CI/CD + Terraform-via-Cloud-Build patterns |
 | `gcloud-ops` | GCP operations and IAM best practices |
+| `troubleshooting` | Unified troubleshooting — logs, Prometheus metrics, system diagnostics |
 
 ## Dependencies
 

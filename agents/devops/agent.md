@@ -35,7 +35,7 @@ permission:
     container-ops: allow
     cloudbuild-ops: allow
     gcloud-ops: allow
-    log-analysis: allow
+    troubleshooting: allow
   bash:
     "*": deny
     # Git operations scoped to workspaces — prevent branch switching in main tree
@@ -198,7 +198,7 @@ domain -- it contains conventions, patterns, and safety rules.
 | Infrastructure as Code | `cloudbuild-ops` | Terraform via Cloud Build |
 | CI/CD pipelines | `cloudbuild-ops` | Pipeline configs, triggers |
 | Google Cloud operations | `gcloud-ops` | GCP resources, IAM, logging |
-| System troubleshooting | -- | Use troubleshoot tools directly |
+| System troubleshooting | `troubleshooting` | Logs, Prometheus metrics, system diagnostics |
 
 ## Delegation Rules
 
