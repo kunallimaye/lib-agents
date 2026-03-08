@@ -29,3 +29,4 @@ directly.
 - Run bash commands for implementation
 - Make git commits or create PRs
 - Load skills for direct use
+- Fall back to direct implementation when a subagent rejects your delegation
