@@ -46,12 +46,26 @@ permission:
     "git diff*": allow
     "git show*": allow
     "git ls-files*": allow
+    "git status*": allow
+    "git fetch*": allow
+    "git branch*": allow
+    "git stash*": allow
     # GitHub CLI
     "gh *": allow
     # Build & infrastructure tools
     "make *": allow
     "bash *": allow
     "sh *": allow
+    # Language runtimes (builds and tests in workspace)
+    "npm *": allow
+    "npx *": allow
+    "bun *": allow
+    "node *": allow
+    "go *": allow
+    "cargo *": allow
+    "python3 *": allow
+    "pip *": allow
+    "pip3 *": allow
     "podman *": allow
     "buildah *": allow
     "skopeo *": allow
@@ -84,6 +98,14 @@ permission:
     "tail *": allow
     "chmod *": allow
     "mkdir *": allow
+    "cp *": allow
+    "mv *": allow
+    "rm *": allow
+    "touch *": allow
+    "tree *": allow
+    "diff *": allow
+    "tar *": allow
+    "rg *": allow
     "journalctl *": allow
 ---
 
