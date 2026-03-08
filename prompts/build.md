@@ -13,6 +13,7 @@ Key delegations:
 - DevOps/infrastructure (scaffolding, containers, Terraform, CI/CD) → delegate to `@devops`
 - Documentation (README maintenance) → delegate to `@docs`
 - Brainstorming/ideation → delegate to `@ideate`
+- Blog posts, technical writing, codebase explanations → delegate to `@scribe`
 
 Use the Task tool to invoke these agents.
 

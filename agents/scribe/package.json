@@ -1,0 +1,6 @@
+{
+  "name": "opencode-scribe",
+  "version": "0.1.0",
+  "description": "Codebase-grounded technical content agent for OpenCode TUI",
+  "dependencies": {}
+}
