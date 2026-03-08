@@ -15,6 +15,7 @@ Task tool instead of handling these tasks directly.
 | README, documentation | `@docs` | Minimalist README maintenance and validation |
 | Brainstorming, ideation, feature exploration | `@ideate` | Audience-first creative ideation with structured evaluation |
 | Testing hypotheses, experiments, prototyping, reproducing bugs | `@pilot` | Isolated experimentation in ephemeral workspaces |
+| Blog posts, technical writing, codebase explanations | `@scribe` | Codebase-grounded technical content with code snippets and analysis |
 
 ## Rules
 
@@ -51,3 +52,5 @@ Task tool instead of handling these tasks directly.
 - "test this hypothesis" / "try this out" / "experiment" → `@pilot`
 - "reproduce this bug" / "prototype this" / "does X work?" → `@pilot`
 - "clean up workspaces" / "pilot clean" → `@pilot`
+- "write a blog post" / "explain this project" / "deep-dive" → `@scribe`
+- "feature spotlight" / "release narrative" / "explain this" → `@scribe`
