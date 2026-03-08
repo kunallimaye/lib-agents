@@ -9,6 +9,10 @@ description: >
 mode: subagent
 temperature: 0.1
 tools:
+  # Disable file write tools — devops writes via bash scoped to /tmp/agent-*
+  write: false
+  edit: false
+  patch: false
   # Disable tools not relevant to devops (git-ops tools handled by delegation)
   gh-issue_*: false
   gh-pr_*: false
@@ -35,7 +39,7 @@ permission:
     container-ops: allow
     cloudbuild-ops: allow
     gcloud-ops: allow
-    troubleshooting: allow
+    log-analysis: allow
   bash:
     "*": deny
     # Git operations scoped to workspaces — prevent branch switching in main tree
@@ -52,6 +56,11 @@ permission:
     "git stash*": allow
     # GitHub CLI
     "gh *": allow
+    # Workspace filesystem write ops (scoped to /tmp/agent-*)
+    "mkdir /tmp/agent-*": allow
+    "rm -rf /tmp/agent-*": allow
+    "rm -r /tmp/agent-*": allow
+    "rm /tmp/agent-*": allow
     # Build & infrastructure tools
     "make *": allow
     "bash *": allow
@@ -182,6 +191,20 @@ subsequent operations MUST target this workspace:
 **NEVER operate on the main project directory.** The main working tree's
 branch must never change as a result of your work.
 
+**File Write Method**
+
+The `write`, `edit`, and `patch` tools are disabled because they enforce a
+project-root path restriction that prevents writing to `/tmp/agent-*`
+workspaces. Instead, use bash commands for all file operations in the
+workspace:
+
+- Create files: `cat > /tmp/agent-<workspace>/path/to/file.ext << 'EOF'`
+- Append to files: `cat >> /tmp/agent-<workspace>/path/to/file.ext << 'EOF'`
+- Copy files: `cp source dest` (with workdir set to workspace)
+- Move/rename: `mv old new` (with workdir set to workspace)
+- Read access: The `read` and `glob` tools work for any path. Use them
+  to read files from the main project for reference.
+
 Load the `devops-workflow` skill for branch naming conventions and the full
 issue-to-PR lifecycle reference.
 
@@ -198,7 +221,7 @@ domain -- it contains conventions, patterns, and safety rules.
 | Infrastructure as Code | `cloudbuild-ops` | Terraform via Cloud Build |
 | CI/CD pipelines | `cloudbuild-ops` | Pipeline configs, triggers |
 | Google Cloud operations | `gcloud-ops` | GCP resources, IAM, logging |
-| System troubleshooting | `troubleshooting` | Logs, Prometheus metrics, system diagnostics |
+| System troubleshooting | -- | Use troubleshoot tools directly |
 
 ## Delegation Rules
 

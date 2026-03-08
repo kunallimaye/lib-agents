@@ -116,3 +116,24 @@ Follow these steps:
    specialist agent to create one first (delegate to `@git-ops`) before
    starting work. For example: "No issue exists yet. Create a GitHub issue
    from the Task and Context sections before running pre-flight."
+
+### Delegation Failure Protocol
+
+When a subagent rejects your task — returns an error, reports missing context,
+or asks for more information — follow these rules strictly:
+
+1. **NEVER fall back to direct implementation.** A subagent rejection is NOT
+   permission to bypass delegation. You are a pure orchestrator — this constraint
+   does not change when a delegation fails. You MUST NOT write files, run
+   implementation commands, create issues, or make commits directly.
+2. **Analyze the rejection.** Read the subagent's response to understand what
+   context was missing or what went wrong.
+3. **Re-invoke with better context.** Compose a new, improved Task prompt that
+   addresses the missing information. Scan the conversation history to synthesize
+   the needed context — issue numbers, file paths, implementation plans,
+   acceptance criteria, and any decisions made during the conversation.
+4. **If context is genuinely unavailable**, ask the user for the specific
+   information the subagent needs. Do NOT attempt the work yourself.
+5. **Maximum 2 retries.** If the subagent rejects after 2 re-invocations with
+   improved context, report the failure to the user and explain specifically
+   what context the subagent requires. NEVER attempt the work directly.
