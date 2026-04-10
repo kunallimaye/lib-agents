@@ -8,6 +8,7 @@ This file defines the workflow and delegation rules for use with advanced AI ass
 2. **Issue Traceability**: Upon plan approval, you MUST post the approved plan as a comment to the relevant GitHub issue using the `gh` CLI.
 3. **Workspace Isolation**: When delegating execution tasks to subagents, always use `Workspace: 'branch'` to create an isolated worktree/branch. Do not operate on the default branch directly.
 4. **Tool Usage**: Use standard CLI tools (`gh`, `git`, `terraform`) via `run_command` instead of custom repository-specific tools unless explicitly instructed.
+5. **Pull Requests**: Upon completion of the implementation plan, you MUST create a Pull Request (PR) referencing the issue, ensure it is reviewed, and merge it if appropriate.
 
 ## Subagent Management Rules
 
@@ -19,8 +20,9 @@ When creating subagents using the `define_subagent` tool:
 
 To operate efficiently in this workspace, follow these defaults for command execution:
 1. **Read-Only Operations**: Always set `SafeToAutoRun: true` for read-only commands (e.g., `git status`, `git branch`, `gh issue list`).
-2. **Low-Risk Mutations**: For creating branches, staging files, and creating commits, you may set `SafeToAutoRun: true` *provided* the work is part of an approved plan in Planning Mode.
-3. **High-Risk Operations**: Operations like `git push` or PR merges must still require explicit user approval, as they affect the remote repository.
+2. **Explicit Instructions & Approved Plans**: When explicitly instructed by the user or executing an approved plan, assume permission and set `SafeToAutoRun: true` for all non-destructive commands (e.g., creating issues, posting comments, running tests).
+3. **Low-Risk Mutations**: For creating branches, staging files, and creating commits, you may set `SafeToAutoRun: true` *provided* the work is part of an approved plan in Planning Mode.
+4. **High-Risk Operations**: Operations like `git push` or PR merges must still require explicit user approval, as they affect the remote repository.
 
 ## Delegation Table
 
