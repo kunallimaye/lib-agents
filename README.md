@@ -50,6 +50,21 @@ cd /path/to/your/project
 /path/to/lib-agents/install.sh git-ops --link
 ```
 
+## Using with Antigravity / Jetski
+
+If you are using this repo with the Antigravity AI coding assistant, we use a specialized workflow (Planning Mode, Issue Traceability, Branch Isolation) defined in `ANTIGRAVITY-AGENTS.md`.
+
+To enable this workflow in any workspace (so the agent automatically picks up the rules), run the following command in your project root:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kunallimaye/lib-agents/main/ANTIGRAVITY-AGENTS.md -o AGENTS.md
+```
+
+*Note: If you are already in a clone of this repository, you can simply run:*
+```bash
+cp ANTIGRAVITY-AGENTS.md AGENTS.md
+```
+
 ## Updating
 
 Check your installation status and available updates:
