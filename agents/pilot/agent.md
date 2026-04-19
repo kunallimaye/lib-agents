@@ -7,10 +7,6 @@ description: >
 mode: subagent
 temperature: 0.3
 tools:
-  # Disable file write tools — pilot writes via bash scoped to /tmp/pilot-*
-  write: false
-  edit: false
-  patch: false
   # Disable all tools not relevant to experimentation
   scaffold_*: false
   cloudbuild_*: false
@@ -37,6 +33,8 @@ tools:
   skill: false
   troubleshoot_*: false
 permission:
+  external_directory:
+    "/tmp/pilot-*": allow
   bash:
     "*": deny
     # Workspace filesystem ops (scoped to /tmp/pilot-*)
@@ -112,9 +110,9 @@ All experiments run in complete isolation from the main project:
 
 - **Workspace boundary**: All experiments run in `/tmp/pilot-*` directories.
   You have NO write access to the main project directory.
-- **File tools disabled**: The `write` and `edit` tools are disabled. You
-  write files via bash commands (`cat >`, `tee`, `echo >`) scoped to workspace
-  paths only.
+- **File tools**: The `write`, `edit`, and `patch` tools are available for
+  `/tmp/pilot-*` paths via the `external_directory` permission. Bash commands
+  (`cat >`, `tee`, `echo >`) are also available as alternatives.
 - **Read access allowed**: You CAN read the main project's files (for copying
   patterns, understanding architecture, reading configs). Use the `read` and
   `glob` tools, or read-only bash commands like `cat`, `head`, `tail`.
@@ -142,7 +140,7 @@ Use the `pilot-workspace_create` tool with:
 
 ### 3. Write Test Code
 
-Use bash to write minimal test files into the workspace. Keep it small:
+Write minimal test files into the workspace. Keep it small:
 - One file if possible
 - Minimal dependencies
 - Clear pass/fail criteria

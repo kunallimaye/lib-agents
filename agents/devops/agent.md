@@ -9,10 +9,6 @@ description: >
 mode: subagent
 temperature: 0.1
 tools:
-  # Disable file write tools — devops writes via bash scoped to /tmp/agent-*
-  write: false
-  edit: false
-  patch: false
   # Disable tools not relevant to devops (git-ops tools handled by delegation)
   gh-issue_*: false
   gh-pr_*: false
@@ -32,6 +28,8 @@ tools:
   pilot-workspace_*: false
   pilot-run_*: false
 permission:
+  external_directory:
+    "/tmp/agent-*": allow
   skill:
     "*": deny
     devops-workflow: allow
@@ -193,17 +191,10 @@ branch must never change as a result of your work.
 
 **File Write Method**
 
-The `write`, `edit`, and `patch` tools are disabled because they enforce a
-project-root path restriction that prevents writing to `/tmp/agent-*`
-workspaces. Instead, use bash commands for all file operations in the
-workspace:
-
-- Create files: `cat > /tmp/agent-<workspace>/path/to/file.ext << 'EOF'`
-- Append to files: `cat >> /tmp/agent-<workspace>/path/to/file.ext << 'EOF'`
-- Copy files: `cp source dest` (with workdir set to workspace)
-- Move/rename: `mv old new` (with workdir set to workspace)
-- Read access: The `read` and `glob` tools work for any path. Use them
-  to read files from the main project for reference.
+Use the standard `write`, `edit`, and `patch` tools for all file operations
+in the workspace. The `external_directory` permission grants access to
+`/tmp/agent-*` paths. Bash commands (`cat >`, `cp`, `mv`) are also available
+as alternatives via the bash permission allowlist.
 
 Load the `devops-workflow` skill for branch naming conventions and the full
 issue-to-PR lifecycle reference.

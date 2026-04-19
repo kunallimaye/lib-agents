@@ -6,9 +6,6 @@ description: >
 mode: subagent
 temperature: 0.1
 tools:
-  write: false
-  edit: false
-  patch: false
   # Disable tools not relevant to git-ops
   scaffold_*: false
   cloudbuild_*: false
@@ -25,6 +22,8 @@ tools:
   pilot-run_*: false
   # branch-cleanup tools enabled for /cleanup workflows
 permission:
+  external_directory:
+    "/tmp/agent-*": allow
   skill:
     "*": deny
     git-pr-workflow: allow
