@@ -54,13 +54,139 @@ function safeWrite(
   return `  CREATED: ${path}`
 }
 
+// ─── Config Generation ───────────────────────────────────────────────
+
+function generateConfigTomlExample(): string {
+  return `# Project configuration for multi-environment deployment.
+# Copy this file to config.toml and fill in your values:
+#   cp config.toml.example config.toml
+#
+# Environment resolution order:
+#   1. CLI: ENVIRONMENT=production make cloud-deploy
+#   2. .env file: ENVIRONMENT=staging
+#   3. Default: staging
+
+[project]
+name = ""  # e.g. "my-app" — used for SA names, state prefix, etc.
+
+# ─── Default GCP settings (shared across environments) ───────────────
+[gcp.default]
+region       = "us-central1"
+deployer_sa  = ""   # populated after 'make cloud-init' (e.g. my-app-deployer@project.iam.gserviceaccount.com)
+runtime_sa   = ""   # populated after first 'make cloud-deploy' (e.g. my-app-runtime@project.iam.gserviceaccount.com)
+
+# ─── Staging environment ─────────────────────────────────────────────
+# Staging is the deployment plane — Cloud Build runs HERE for ALL envs.
+[gcp.staging]
+project = ""  # GCP project ID for staging (e.g. my-app-staging)
+
+# ─── Production environment ──────────────────────────────────────────
+# Production has NO Cloud Build. Staging's CB SA deploys to prod.
+[gcp.production]
+project = ""  # GCP project ID for production (e.g. my-app-production)
+`
+}
+
+function generateConfigPy(): string {
+  return `#!/usr/bin/env python3
+"""Parse config.toml and output shell-evaluable environment variables.
+
+Usage (from common.sh):
+    eval "$(python3 scripts/config.py)"
+
+Environment merge logic:
+    [gcp.default] values are loaded first, then [gcp.{ENVIRONMENT}]
+    overrides any keys that are set (non-empty) in the env section.
+
+Requires Python 3.11+ (uses stdlib tomllib, no external deps).
+"""
+
+import os
+import sys
+
+try:
+    import tomllib
+except ModuleNotFoundError:
+    # Python < 3.11 fallback
+    try:
+        import tomli as tomllib  # type: ignore[no-redef]
+    except ModuleNotFoundError:
+        print("echo 'ERROR: Python 3.11+ required (tomllib) or install tomli'", file=sys.stderr)
+        sys.exit(1)
+
+from pathlib import Path
+
+
+def find_config() -> Path:
+    """Walk up from script dir to find config.toml."""
+    script_dir = Path(__file__).resolve().parent
+    project_root = script_dir.parent
+    config_path = project_root / "config.toml"
+    if config_path.exists():
+        return config_path
+    # Fallback: try cwd
+    cwd_config = Path.cwd() / "config.toml"
+    if cwd_config.exists():
+        return cwd_config
+    print(f"# config.toml not found (checked {config_path} and {cwd_config})")
+    sys.exit(0)
+
+
+def main() -> None:
+    config_path = find_config()
+
+    with open(config_path, "rb") as f:
+        config = tomllib.load(f)
+
+    environment = os.environ.get("ENVIRONMENT", "staging")
+
+    # Project-level settings
+    project = config.get("project", {})
+    project_name = project.get("name", "")
+
+    # Merge: default -> environment-specific
+    gcp = config.get("gcp", {})
+    defaults = dict(gcp.get("default", {}))
+    env_overrides = dict(gcp.get(environment, {}))
+
+    # Non-empty env values override defaults
+    merged = {**defaults}
+    for key, value in env_overrides.items():
+        if value != "":
+            merged[key] = value
+
+    # Output shell exports
+    print(f'export ENVIRONMENT="{environment}"')
+    if project_name:
+        print(f'export PROJECT_NAME="{project_name}"')
+    if merged.get("project"):
+        print(f'export GCP_PROJECT="{merged["project"]}"')
+    if merged.get("region"):
+        print(f'export GCP_REGION="{merged["region"]}"')
+    if merged.get("deployer_sa"):
+        print(f'export DEPLOYER_SA="{merged["deployer_sa"]}"')
+    if merged.get("runtime_sa"):
+        print(f'export RUNTIME_SA="{merged["runtime_sa"]}"')
+
+    # Derived values
+    if project_name:
+        print(f'export TF_STATE_PREFIX="{project_name}/{environment}"')
+        print(f'export IMAGE_NAME="{project_name}"')
+        print(f'export AR_REPO="{project_name}"')
+
+
+if __name__ == "__main__":
+    main()
+`
+}
+
 // ─── Makefile Generation ─────────────────────────────────────────────
 
 function generateMakefile(_pt: ProjectType): string {
   return `.PHONY: help \\
   local-init local-clean local-build local-run local-test local-lint \\
   container-init container-clean container-build container-run \\
-  cloud-init cloud-build cloud-deploy cloud-clean \\
+  cloud-init cloud-build cloud-deploy cloud-promote cloud-clean \\
   logs-list logs-last logs-clean
 
 help: ## Show this help
@@ -112,6 +238,9 @@ cloud-build: ## Build and push to Artifact Registry (via Cloud Build)
 cloud-deploy: ## Deploy to cloud runtime (via Cloud Build)
 \t@bash scripts/cloud.sh deploy
 
+cloud-promote: ## Promote staging image to production
+\t@bash scripts/cloud.sh promote
+
 cloud-clean: ## Tear down cloud resources (via Cloud Build)
 \t@bash scripts/cloud.sh clean
 
@@ -155,13 +284,26 @@ die() { log_error "$@"; exit 1; }
 SCRIPT_DIR="$(cd "$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "\${SCRIPT_DIR}/.." && pwd)"
 
+# Environment resolution: CLI > .env > default (staging)
+export ENVIRONMENT="\${ENVIRONMENT:-staging}"
+
 # Load .env if it exists (do NOT commit .env files)
 if [[ -f "\${PROJECT_ROOT}/.env" ]]; then
   # shellcheck disable=SC1091
   source "\${PROJECT_ROOT}/.env"
 fi
 
-# ─── Defaults (override in .env or environment) ──────────────────────
+# Load config.toml via Python parser (structured multi-env config)
+# Falls back to .env defaults if config.toml doesn't exist
+if [[ -f "\${PROJECT_ROOT}/config.toml" ]]; then
+  if command -v python3 &>/dev/null; then
+    eval "$(python3 "\${SCRIPT_DIR}/config.py")"
+  else
+    log_warn "python3 not found — config.toml will not be loaded. Install Python 3.11+."
+  fi
+fi
+
+# ─── Defaults (override in config.toml, .env, or environment) ────────
 
 export PROJECT_NAME="\${PROJECT_NAME:-$(basename "\${PROJECT_ROOT}")}"
 export IMAGE_NAME="\${IMAGE_NAME:-\${PROJECT_NAME}}"
@@ -169,6 +311,12 @@ export IMAGE_TAG="\${IMAGE_TAG:-latest}"
 export GCP_PROJECT="\${GCP_PROJECT:-}"
 export GCP_REGION="\${GCP_REGION:-us-central1}"
 export AR_REPO="\${AR_REPO:-\${PROJECT_NAME}}"
+
+# ─── Derived values ──────────────────────────────────────────────────
+
+export TF_STATE_PREFIX="\${TF_STATE_PREFIX:-\${PROJECT_NAME}/\${ENVIRONMENT}}"
+export DEPLOYER_SA="\${DEPLOYER_SA:-\${PROJECT_NAME}-deployer@\${GCP_PROJECT}.iam.gserviceaccount.com}"
+export RUNTIME_SA="\${RUNTIME_SA:-\${PROJECT_NAME}-runtime@\${GCP_PROJECT}.iam.gserviceaccount.com}"
 
 # ─── Helpers ──────────────────────────────────────────────────────────
 
@@ -193,7 +341,7 @@ start_log() {
   local action="\${1:-unknown}"
   LOG_FILE="\${LOG_DIR}/$(date +%Y%m%d-%H%M%S)-\${action}.log"
   exec > >(tee -a "\${LOG_FILE}") 2>&1
-  log_info "Logging to \${LOG_FILE}"
+  log_info "Logging to \${LOG_FILE} [env=\${ENVIRONMENT}]"
 }
 `
 }
@@ -380,7 +528,11 @@ esac
 function generateCloudSh(): string {
   return `#!/usr/bin/env bash
 # Cloud runtime operations (via Cloud Build)
-# Usage: bash scripts/cloud.sh {init|build|deploy|clean}
+# Usage: bash scripts/cloud.sh {init|build|deploy|promote|clean}
+#
+# Architecture: staging is the single deployment plane.
+# All Cloud Build jobs submit to the STAGING project, even when
+# deploying to production. Production has NO Cloud Build.
 
 SCRIPT_DIR="$(cd "$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
@@ -390,30 +542,116 @@ start_log "cloud-\${1:-unknown}"
 AR_LOCATION="\${GCP_REGION}"
 AR_IMAGE="\${AR_LOCATION}-docker.pkg.dev/\${GCP_PROJECT}/\${AR_REPO}/\${IMAGE_NAME}:\${IMAGE_TAG}"
 
+# Resolve the staging project for CB submission.
+# All builds submit to staging regardless of ENVIRONMENT.
+_staging_project() {
+  if [[ -f "\${PROJECT_ROOT}/config.toml" ]] && command -v python3 &>/dev/null; then
+    ENVIRONMENT=staging python3 "\${SCRIPT_DIR}/config.py" 2>/dev/null | grep '^export GCP_PROJECT=' | sed 's/export GCP_PROJECT="\\(.*\\)"/\\1/'
+  else
+    echo "\${GCP_PROJECT}"
+  fi
+}
+
+# Build Cloud Build substitutions for Terraform pipelines
+_tf_substitutions() {
+  local action="\${1}"
+  local subs="_TF_ACTION=\${action}"
+  subs+=",_TF_STATE_BUCKET=\${GCP_PROJECT}-tfstate"
+  subs+=",_TF_STATE_PREFIX=\${TF_STATE_PREFIX}"
+  subs+=",_REGION=\${GCP_REGION}"
+  subs+=",_CB_SERVICE_ACCOUNT=\${DEPLOYER_SA}"
+  subs+=",_RUNTIME_SA_NAME=\${PROJECT_NAME}-runtime"
+  echo "\${subs}"
+}
+
+# ─── Phase 1: Bootstrap ─────────────────────────────────────────────
+# Creates the deployer SA with minimal bootstrap roles via gcloud.
+# Phase 2 (Terraform) grants functional roles via self-escalation.
+
 init() {
-  log_info "Initializing cloud resources..."
+  log_info "Initializing cloud resources for \${ENVIRONMENT}..."
   require_cmd gcloud
 
-  [[ -z "\${GCP_PROJECT}" ]] && die "GCP_PROJECT is not set. Export it or add to .env"
+  [[ -z "\${GCP_PROJECT}" ]] && die "GCP_PROJECT is not set. Set it in config.toml or .env"
 
-  # Submit Cloud Build to run Terraform init + plan
-  gcloud builds submit \\
+  local SA_NAME="\${PROJECT_NAME}-deployer"
+  local SA_EMAIL="\${SA_NAME}@\${GCP_PROJECT}.iam.gserviceaccount.com"
+
+  log_info "Phase 1: Creating deployer SA '\${SA_NAME}' in \${GCP_PROJECT}..."
+
+  # Create deployer service account
+  gcloud iam service-accounts create "\${SA_NAME}" \\
     --project="\${GCP_PROJECT}" \\
+    --display-name="\${PROJECT_NAME} Cloud Build deployer" \\
+    2>/dev/null || log_warn "SA already exists: \${SA_EMAIL}"
+
+  # Grant bootstrap roles (minimum for Terraform to run and self-escalate)
+  local BOOTSTRAP_ROLES=(
+    "roles/storage.admin"
+    "roles/logging.logWriter"
+    "roles/resourcemanager.projectIamAdmin"
+    "roles/serviceusage.serviceUsageAdmin"
+  )
+
+  for role in "\${BOOTSTRAP_ROLES[@]}"; do
+    log_info "  Granting \${role}..."
+    gcloud projects add-iam-policy-binding "\${GCP_PROJECT}" \\
+      --member="serviceAccount:\${SA_EMAIL}" \\
+      --role="\${role}" \\
+      --condition=None \\
+      --quiet
+  done
+
+  # Create TF state bucket if it doesn't exist
+  local STATE_BUCKET="\${GCP_PROJECT}-tfstate"
+  if ! gcloud storage buckets describe "gs://\${STATE_BUCKET}" --project="\${GCP_PROJECT}" &>/dev/null; then
+    log_info "Creating TF state bucket: gs://\${STATE_BUCKET}"
+    gcloud storage buckets create "gs://\${STATE_BUCKET}" \\
+      --project="\${GCP_PROJECT}" \\
+      --location="\${GCP_REGION}" \\
+      --uniform-bucket-level-access
+  else
+    log_info "TF state bucket already exists: gs://\${STATE_BUCKET}"
+  fi
+
+  # Enable required APIs
+  log_info "Enabling required APIs..."
+  gcloud services enable \\
+    --project="\${GCP_PROJECT}" \\
+    cloudbuild.googleapis.com \\
+    run.googleapis.com \\
+    artifactregistry.googleapis.com \\
+    iam.googleapis.com \\
+    cloudresourcemanager.googleapis.com
+
+  # Run Terraform init via Cloud Build using the new SA
+  log_info "Phase 2: Running Terraform init via Cloud Build..."
+  local STAGING_PROJECT
+  STAGING_PROJECT="$(_staging_project)"
+
+  gcloud builds submit \\
+    --project="\${STAGING_PROJECT}" \\
+    --service-account="projects/\${STAGING_PROJECT}/serviceAccounts/\${SA_EMAIL}" \\
     --config="\${PROJECT_ROOT}/cicd/cloudbuild-plan.yaml" \\
-    --substitutions="_TF_ACTION=init" \\
+    --substitutions="$(_tf_substitutions init)" \\
     "\${PROJECT_ROOT}"
 
-  log_ok "Cloud resources initialized"
+  log_ok "Cloud resources initialized. Deployer SA: \${SA_EMAIL}"
+  log_info "Update config.toml [gcp.default] deployer_sa = \\"\${SA_EMAIL}\\""
 }
 
 build() {
-  log_info "Building and pushing image via Cloud Build..."
+  log_info "Building and pushing image via Cloud Build [\${ENVIRONMENT}]..."
   require_cmd gcloud
 
-  [[ -z "\${GCP_PROJECT}" ]] && die "GCP_PROJECT is not set. Export it or add to .env"
+  [[ -z "\${GCP_PROJECT}" ]] && die "GCP_PROJECT is not set. Set it in config.toml or .env"
+
+  local STAGING_PROJECT
+  STAGING_PROJECT="$(_staging_project)"
 
   gcloud builds submit \\
-    --project="\${GCP_PROJECT}" \\
+    --project="\${STAGING_PROJECT}" \\
+    --service-account="projects/\${STAGING_PROJECT}/serviceAccounts/\${DEPLOYER_SA}" \\
     --config="\${PROJECT_ROOT}/cicd/cloudbuild.yaml" \\
     --substitutions="_IMAGE_NAME=\${AR_IMAGE}" \\
     "\${PROJECT_ROOT}"
@@ -422,48 +660,101 @@ build() {
 }
 
 deploy() {
-  log_info "Deploying via Cloud Build..."
+  log_info "Deploying via Cloud Build [\${ENVIRONMENT}]..."
   require_cmd gcloud
 
-  [[ -z "\${GCP_PROJECT}" ]] && die "GCP_PROJECT is not set. Export it or add to .env"
+  [[ -z "\${GCP_PROJECT}" ]] && die "GCP_PROJECT is not set. Set it in config.toml or .env"
+
+  local STAGING_PROJECT
+  STAGING_PROJECT="$(_staging_project)"
 
   gcloud builds submit \\
-    --project="\${GCP_PROJECT}" \\
+    --project="\${STAGING_PROJECT}" \\
+    --service-account="projects/\${STAGING_PROJECT}/serviceAccounts/\${DEPLOYER_SA}" \\
     --config="\${PROJECT_ROOT}/cicd/cloudbuild-apply.yaml" \\
-    --substitutions="_TF_ACTION=apply" \\
+    --substitutions="$(_tf_substitutions apply)" \\
     "\${PROJECT_ROOT}"
 
-  log_ok "Deployment complete"
+  log_ok "Deployment complete [\${ENVIRONMENT}]"
 }
 
-clean() {
-  log_info "Tearing down cloud resources..."
+promote() {
+  log_info "Promoting staging image to production..."
   require_cmd gcloud
 
-  [[ -z "\${GCP_PROJECT}" ]] && die "GCP_PROJECT is not set. Export it or add to .env"
+  # Resolve staging and production projects
+  local STAGING_PROJECT PROD_PROJECT
+  STAGING_PROJECT="$(ENVIRONMENT=staging python3 "\${SCRIPT_DIR}/config.py" 2>/dev/null | grep '^export GCP_PROJECT=' | sed 's/export GCP_PROJECT="\\(.*\\)"/\\1/')"
+  PROD_PROJECT="$(ENVIRONMENT=production python3 "\${SCRIPT_DIR}/config.py" 2>/dev/null | grep '^export GCP_PROJECT=' | sed 's/export GCP_PROJECT="\\(.*\\)"/\\1/')"
 
-  if ! confirm "This will destroy cloud infrastructure. Continue?"; then
+  [[ -z "\${STAGING_PROJECT}" ]] && die "Staging project not set in config.toml"
+  [[ -z "\${PROD_PROJECT}" ]] && die "Production project not set in config.toml"
+
+  # Find the latest SHA tag from staging
+  local SHA_TAG
+  SHA_TAG="$(gcloud artifacts docker tags list \\
+    "\${GCP_REGION}-docker.pkg.dev/\${STAGING_PROJECT}/\${AR_REPO}/\${IMAGE_NAME}" \\
+    --filter="tag~^sha-" \\
+    --sort-by="~tag" \\
+    --limit=1 \\
+    --format="value(tag)" 2>/dev/null)"
+
+  [[ -z "\${SHA_TAG}" ]] && die "No SHA-tagged images found in staging"
+
+  log_info "Latest staging image: \${SHA_TAG}"
+
+  if ! confirm "Promote \${SHA_TAG} to production (\${PROD_PROJECT})?"; then
     log_warn "Aborted."
     exit 0
   fi
 
+  # Deploy to production via Terraform (submitted to staging CB)
+  local PROD_IMAGE="\${GCP_REGION}-docker.pkg.dev/\${STAGING_PROJECT}/\${AR_REPO}/\${IMAGE_NAME}:\${SHA_TAG}"
+  local PROD_STATE_PREFIX="\${PROJECT_NAME}/production"
+
   gcloud builds submit \\
-    --project="\${GCP_PROJECT}" \\
+    --project="\${STAGING_PROJECT}" \\
+    --service-account="projects/\${STAGING_PROJECT}/serviceAccounts/\${DEPLOYER_SA}" \\
     --config="\${PROJECT_ROOT}/cicd/cloudbuild-apply.yaml" \\
-    --substitutions="_TF_ACTION=destroy" \\
+    --substitutions="_TF_ACTION=apply,_TF_STATE_BUCKET=\${PROD_PROJECT}-tfstate,_TF_STATE_PREFIX=\${PROD_STATE_PREFIX},_REGION=\${GCP_REGION},_CB_SERVICE_ACCOUNT=\${DEPLOYER_SA},_RUNTIME_SA_NAME=\${PROJECT_NAME}-runtime" \\
     "\${PROJECT_ROOT}"
 
-  log_ok "Cloud resources destroyed"
+  log_ok "Production deployment complete: \${SHA_TAG} → \${PROD_PROJECT}"
+}
+
+clean() {
+  log_info "Tearing down cloud resources [\${ENVIRONMENT}]..."
+  require_cmd gcloud
+
+  [[ -z "\${GCP_PROJECT}" ]] && die "GCP_PROJECT is not set. Set it in config.toml or .env"
+
+  if ! confirm "This will destroy cloud infrastructure for \${ENVIRONMENT}. Continue?"; then
+    log_warn "Aborted."
+    exit 0
+  fi
+
+  local STAGING_PROJECT
+  STAGING_PROJECT="$(_staging_project)"
+
+  gcloud builds submit \\
+    --project="\${STAGING_PROJECT}" \\
+    --service-account="projects/\${STAGING_PROJECT}/serviceAccounts=\${DEPLOYER_SA}" \\
+    --config="\${PROJECT_ROOT}/cicd/cloudbuild-apply.yaml" \\
+    --substitutions="$(_tf_substitutions destroy)" \\
+    "\${PROJECT_ROOT}"
+
+  log_ok "Cloud resources destroyed [\${ENVIRONMENT}]"
 }
 
 # ─── Dispatch ─────────────────────────────────────────────────────────
 
 case "\${1:-}" in
-  init)   init   ;;
-  build)  build  ;;
-  deploy) deploy ;;
-  clean)  clean  ;;
-  *)      die "Usage: $0 {init|build|deploy|clean}" ;;
+  init)    init    ;;
+  build)   build   ;;
+  deploy)  deploy  ;;
+  promote) promote ;;
+  clean)   clean   ;;
+  *)       die "Usage: $0 {init|build|deploy|promote|clean}" ;;
 esac
 `
 }
@@ -619,28 +910,33 @@ out/
 function generateCloudbuildYaml(): string {
   return `# Main build pipeline: build image and push to Artifact Registry
 # Triggered by: push to main branch or manual submission
+# Images are tagged with :latest AND :sha-<SHORT_SHA> for traceability
 steps:
-  # Build container image
+  # Build container image with both tags
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'build'
       - '-f'
       - 'cicd/Dockerfile'
       - '-t'
-      - '\${_IMAGE_NAME}'
+      - '\${_IMAGE_NAME}:latest'
+      - '-t'
+      - '\${_IMAGE_NAME}:sha-\${SHORT_SHA}'
       - '.'
 
-  # Push to Artifact Registry
+  # Push all tags to Artifact Registry
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
+      - '--all-tags'
       - '\${_IMAGE_NAME}'
 
 images:
-  - '\${_IMAGE_NAME}'
+  - '\${_IMAGE_NAME}:latest'
+  - '\${_IMAGE_NAME}:sha-\${SHORT_SHA}'
 
 substitutions:
-  _IMAGE_NAME: 'us-central1-docker.pkg.dev/\${PROJECT_ID}/app/app:latest'
+  _IMAGE_NAME: 'us-central1-docker.pkg.dev/\${PROJECT_ID}/app/app'
 
 options:
   logging: CLOUD_LOGGING_ONLY
@@ -673,12 +969,16 @@ steps:
       - 'TF_IN_AUTOMATION=true'
       - 'TF_VAR_project_id=\${PROJECT_ID}'
       - 'TF_VAR_region=\${_REGION}'
+      - 'TF_VAR_cb_service_account=\${_CB_SERVICE_ACCOUNT}'
+      - 'TF_VAR_runtime_sa_name=\${_RUNTIME_SA_NAME}'
 
 substitutions:
   _TF_ACTION: 'plan'
   _TF_STATE_BUCKET: '\${PROJECT_ID}-tfstate'
-  _TF_STATE_PREFIX: 'app'
+  _TF_STATE_PREFIX: 'app/staging'
   _REGION: 'us-central1'
+  _CB_SERVICE_ACCOUNT: ''
+  _RUNTIME_SA_NAME: 'app-runtime'
 
 options:
   logging: CLOUD_LOGGING_ONLY
@@ -712,12 +1012,16 @@ steps:
       - 'TF_IN_AUTOMATION=true'
       - 'TF_VAR_project_id=\${PROJECT_ID}'
       - 'TF_VAR_region=\${_REGION}'
+      - 'TF_VAR_cb_service_account=\${_CB_SERVICE_ACCOUNT}'
+      - 'TF_VAR_runtime_sa_name=\${_RUNTIME_SA_NAME}'
 
 substitutions:
   _TF_ACTION: 'apply'
   _TF_STATE_BUCKET: '\${PROJECT_ID}-tfstate'
-  _TF_STATE_PREFIX: 'app'
+  _TF_STATE_PREFIX: 'app/staging'
   _REGION: 'us-central1'
+  _CB_SERVICE_ACCOUNT: ''
+  _RUNTIME_SA_NAME: 'app-runtime'
 
 options:
   logging: CLOUD_LOGGING_ONLY
@@ -779,6 +1083,42 @@ variable "image" {
   type        = string
   default     = ""
 }
+
+# ─── Service Account Variables ───────────────────────────────────────
+
+variable "cb_service_account" {
+  description = "Cloud Build deployer service account email (for functional IAM grants)"
+  type        = string
+  default     = ""
+}
+
+variable "runtime_sa_name" {
+  description = "Name for the Cloud Run runtime service account"
+  type        = string
+  default     = "app-runtime"
+}
+
+# ─── Scaling Variables ───────────────────────────────────────────────
+
+variable "min_instances" {
+  description = "Minimum Cloud Run instances (0 = scale to zero)"
+  type        = number
+  default     = 0
+}
+
+variable "max_instances" {
+  description = "Maximum Cloud Run instances"
+  type        = number
+  default     = 3
+}
+
+# ─── Domain Mapping ─────────────────────────────────────────────────
+
+variable "domain" {
+  description = "Custom domain for Cloud Run service (leave empty to skip domain mapping)"
+  type        = string
+  default     = ""
+}
 `
 }
 
@@ -792,6 +1132,40 @@ resource "google_artifact_registry_repository" "app" {
   description   = "Container images for \${var.service_name}"
 }
 
+# ─── Runtime Service Account ────────────────────────────────────────
+# Dedicated SA for Cloud Run (replaces default Compute Engine SA)
+
+resource "google_service_account" "runtime" {
+  account_id   = var.runtime_sa_name
+  display_name = "\${var.service_name} Cloud Run runtime"
+}
+
+# ─── Deployer SA Functional IAM (Phase 2 self-escalation) ────────────
+# Phase 1 grants bootstrap roles via gcloud (see scripts/cloud.sh init).
+# Phase 2 (here) grants the functional roles the deployer needs for
+# ongoing CI/CD operations.
+
+resource "google_project_iam_member" "deployer_run_admin" {
+  count   = var.cb_service_account != "" ? 1 : 0
+  project = var.project_id
+  role    = "roles/run.admin"
+  member  = "serviceAccount:\${var.cb_service_account}"
+}
+
+resource "google_project_iam_member" "deployer_ar_admin" {
+  count   = var.cb_service_account != "" ? 1 : 0
+  project = var.project_id
+  role    = "roles/artifactregistry.admin"
+  member  = "serviceAccount:\${var.cb_service_account}"
+}
+
+resource "google_project_iam_member" "deployer_sa_user" {
+  count   = var.cb_service_account != "" ? 1 : 0
+  project = var.project_id
+  role    = "roles/iam.serviceAccountUser"
+  member  = "serviceAccount:\${var.cb_service_account}"
+}
+
 # ─── Cloud Run Service ───────────────────────────────────────────────
 
 resource "google_cloud_run_v2_service" "app" {
@@ -799,6 +1173,8 @@ resource "google_cloud_run_v2_service" "app" {
   location = var.region
 
   template {
+    service_account = google_service_account.runtime.email
+
     containers {
       image = var.image != "" ? var.image : "\${var.region}-docker.pkg.dev/\${var.project_id}/\${var.service_name}/\${var.service_name}:latest"
 
@@ -811,8 +1187,8 @@ resource "google_cloud_run_v2_service" "app" {
     }
 
     scaling {
-      min_instance_count = 0
-      max_instance_count = 3
+      min_instance_count = var.min_instances
+      max_instance_count = var.max_instances
     }
   }
 
@@ -832,6 +1208,23 @@ resource "google_cloud_run_v2_service_iam_member" "public" {
   role     = "roles/run.invoker"
   member   = "allUsers"
 }
+
+# ─── Domain Mapping (conditional) ───────────────────────────────────
+# Only created when var.domain is set to a non-empty value.
+
+resource "google_cloud_run_domain_mapping" "app" {
+  count    = var.domain != "" ? 1 : 0
+  location = var.region
+  name     = var.domain
+
+  metadata {
+    namespace = var.project_id
+  }
+
+  spec {
+    route_name = google_cloud_run_v2_service.app.name
+  }
+}
 `
 }
 
@@ -845,6 +1238,16 @@ output "artifact_registry_repo" {
   description = "Artifact Registry repository URL"
   value       = "\${var.region}-docker.pkg.dev/\${var.project_id}/\${google_artifact_registry_repository.app.repository_id}"
 }
+
+output "runtime_sa_email" {
+  description = "Runtime service account email"
+  value       = google_service_account.runtime.email
+}
+
+output "domain_records" {
+  description = "DNS records to configure for domain mapping"
+  value       = var.domain != "" ? google_cloud_run_domain_mapping.app[0].status[0].resource_records : []
+}
 `
 }
 
@@ -856,6 +1259,7 @@ function gitignoreEntries(pt: ProjectType): string[] {
     ".env",
     ".env.local",
     ".env.*.local",
+    "config.toml",
     "",
     "# OS",
     ".DS_Store",
@@ -896,9 +1300,16 @@ function gitignoreEntries(pt: ProjectType): string[] {
 
 // ─── Component Scaffolding Helpers ───────────────────────────────────
 
-type ScaffoldComponent = "makefile" | "scripts" | "container" | "cloudbuild" | "terraform" | "gitignore"
+type ScaffoldComponent = "config" | "makefile" | "scripts" | "container" | "cloudbuild" | "terraform" | "gitignore"
 
-const ALL_COMPONENTS: ScaffoldComponent[] = ["makefile", "scripts", "container", "cloudbuild", "terraform", "gitignore"]
+const ALL_COMPONENTS: ScaffoldComponent[] = ["config", "makefile", "scripts", "container", "cloudbuild", "terraform", "gitignore"]
+
+function scaffoldConfig(root: string, force: boolean): string[] {
+  return [
+    "── Config ──",
+    safeWrite(join(root, "config.toml.example"), generateConfigTomlExample(), force),
+  ]
+}
 
 async function scaffoldMakefile(root: string, pt: ProjectType, force: boolean): Promise<string[]> {
   return [
@@ -916,9 +1327,10 @@ async function scaffoldScripts(root: string, pt: ProjectType, force: boolean): P
     safeWrite(join(dir, "local.sh"), generateLocalSh(pt), force),
     safeWrite(join(dir, "container.sh"), generateContainerSh(pt), force),
     safeWrite(join(dir, "cloud.sh"), generateCloudSh(), force),
+    safeWrite(join(dir, "config.py"), generateConfigPy(), force),
   ]
   try {
-    await Bun.$`chmod +x ${dir}/*.sh`.text()
+    await Bun.$`chmod +x ${dir}/*.sh ${dir}/config.py`.text()
   } catch { /* non-fatal */ }
   return results
 }
@@ -990,17 +1402,20 @@ function scaffoldGitignore(root: string, pt: ProjectType): string[] {
 
 export const scaffold = tool({
   description:
-    "Generate project operational structure: Makefile, scripts/, cicd/Dockerfile, " +
-    "cicd/cloudbuild*.yaml, cicd/terraform/, and .gitignore. Detects project type " +
-    "and tailors all files. Use the 'components' parameter to generate only specific " +
-    "parts, or omit it to generate everything. Skips existing files unless force=true.",
+    "Generate project operational structure: config.toml, Makefile, scripts/, " +
+    "cicd/Dockerfile, cicd/cloudbuild*.yaml, cicd/terraform/, and .gitignore. " +
+    "Detects project type and tailors all files. Full CI/CD includes multi-environment " +
+    "support (staging/production) with custom deployer and runtime service accounts. " +
+    "Use the 'components' parameter to generate only specific parts, or omit it to " +
+    "generate everything. Skips existing files unless force=true.",
   args: {
     components: tool.schema
-      .array(tool.schema.enum(["makefile", "scripts", "container", "cloudbuild", "terraform", "gitignore"]))
+      .array(tool.schema.enum(["config", "makefile", "scripts", "container", "cloudbuild", "terraform", "gitignore"]))
       .optional()
       .describe(
-        "Which components to scaffold. Options: makefile, scripts, container, " +
-        "cloudbuild, terraform, gitignore. Omit to generate everything.",
+        "Which components to scaffold. Options: config, makefile, scripts, container, " +
+        "cloudbuild, terraform, gitignore. Omit to generate everything. " +
+        "When cloudbuild or terraform is selected, config is auto-included.",
       ),
     force: tool.schema
       .boolean()
@@ -1011,10 +1426,15 @@ export const scaffold = tool({
     const root = context.directory || "."
     const pt = detectProject(root)
     const force = args.force || false
-    const components: ScaffoldComponent[] =
+    let components: ScaffoldComponent[] =
       args.components && args.components.length > 0
         ? args.components as ScaffoldComponent[]
         : ALL_COMPONENTS
+
+    // Auto-include config when CI/CD components are selected
+    if ((components.includes("cloudbuild") || components.includes("terraform")) && !components.includes("config")) {
+      components = ["config", ...components]
+    }
 
     const results: string[] = [
       "Project Scaffold",
@@ -1026,6 +1446,9 @@ export const scaffold = tool({
 
     for (const component of components) {
       switch (component) {
+        case "config":
+          results.push(...scaffoldConfig(root, force))
+          break
         case "makefile":
           results.push(...await scaffoldMakefile(root, pt, force))
           break

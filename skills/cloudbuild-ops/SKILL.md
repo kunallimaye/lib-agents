@@ -9,6 +9,8 @@ description: Cloud Build CI/CD patterns with Terraform-via-Cloud-Build workflows
 - Document the Terraform-via-Cloud-Build pattern (plan on PR, apply on merge)
 - Define the `cicd/` directory layout conventions
 - Cover trigger types, substitution variables, and security practices
+- Document multi-environment deployment (staging as deployment plane)
+- Document the two-phase IAM bootstrap pattern for custom service accounts
 
 ## When to use me
 
@@ -19,6 +21,9 @@ build failures.
 ## `cicd/` Directory Layout
 
 ```
+config.toml.example           # Multi-env config template (copy to config.toml)
+scripts/
+  config.py                   # Python TOML parser for config.toml
 cicd/
   Dockerfile                  # Application container build
   .dockerignore               # Build context exclusions
@@ -28,9 +33,9 @@ cicd/
   terraform/
     providers.tf              # Google provider + required version
     backend.tf                # GCS state backend
-    variables.tf              # Input variables (project_id, region, etc.)
-    main.tf                   # GCP resources (AR repo, Cloud Run, IAM)
-    outputs.tf                # Output values (service URL, repo URL)
+    variables.tf              # Input variables (project_id, region, SA, scaling)
+    main.tf                   # GCP resources (AR, Cloud Run, SAs, IAM, domain)
+    outputs.tf                # Output values (service URL, repo URL, SA emails)
 ```
 
 ## `cloudbuild.yaml` Structure
@@ -74,6 +79,65 @@ options:
 | `$BRANCH_NAME` | Git branch name |
 | `$TAG_NAME` | Git tag name |
 | `$SHORT_SHA` | First 7 chars of commit SHA |
+
+## Multi-Environment Deployment
+
+The scaffold generates a **staging-as-deployment-plane** architecture:
+
+- **Staging project** runs ALL Cloud Build jobs (for both staging and production)
+- **Production project** has NO Cloud Build -- staging's deployer SA deploys there
+- Configuration lives in `config.toml` with `[gcp.default]`, `[gcp.staging]`,
+  `[gcp.production]` sections
+- TF state prefix is auto-derived: `{project_name}/{environment}`
+- Images are tagged with `:latest` + `:sha-<SHORT_SHA>` on every build
+- Production promotion: `make cloud-promote` (tags staging image, deploys to prod)
+
+### Environment resolution order
+
+1. CLI: `ENVIRONMENT=production make cloud-deploy`
+2. `.env` file: `ENVIRONMENT=staging`
+3. Default: `staging`
+
+### Cross-project IAM (one-time setup)
+
+For staging's deployer SA to deploy to the production project, grant it
+roles in the production project:
+
+```bash
+gcloud projects add-iam-policy-binding PROD_PROJECT_ID \
+  --member="serviceAccount:my-app-deployer@STAGING_PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/run.admin"
+# Repeat for: roles/artifactregistry.admin, roles/iam.serviceAccountUser, roles/storage.admin
+```
+
+## Two-Phase IAM Bootstrap
+
+Custom service accounts replace the default Cloud Build SA and default
+Compute Engine SA:
+
+| SA | Purpose | Created By | Key Roles |
+|---|---|---|---|
+| **Deployer** (`{name}-deployer`) | Runs Cloud Build | `make cloud-init` (gcloud) | Bootstrap: storage.admin, logging.logWriter, projectIamAdmin. Functional (Terraform): run.admin, artifactregistry.admin, iam.serviceAccountUser |
+| **Runtime** (`{name}-runtime`) | Cloud Run app identity | Terraform | secretmanager.secretAccessor (when needed) |
+
+### Phase 1: Bootstrap (`make cloud-init`)
+
+Creates the deployer SA via `gcloud` with minimal bootstrap roles -- just
+enough for Terraform to run and self-escalate:
+
+- `roles/storage.admin` -- read/write TF state in GCS
+- `roles/logging.logWriter` -- Cloud Build logs
+- `roles/resourcemanager.projectIamAdmin` -- self-escalation via Terraform
+- `roles/serviceusage.serviceUsageAdmin` -- enable GCP APIs
+
+### Phase 2: Functional IAM (Terraform)
+
+On first `make cloud-deploy`, Terraform grants the deployer SA functional
+roles (self-escalation) and creates the runtime SA:
+
+- Deployer gets: `roles/run.admin`, `roles/artifactregistry.admin`,
+  `roles/iam.serviceAccountUser`
+- Runtime SA is created and assigned to Cloud Run
 
 ## Terraform via Cloud Build
 
@@ -129,8 +193,12 @@ Convention: `${PROJECT_ID}-tfstate` with prefix matching the service name.
 
 ### Service Account Permissions
 
-The Cloud Build service account (`<project-number>@cloudbuild.gserviceaccount.com`)
-needs these roles:
+The scaffold generates custom deployer and runtime SAs (see "Two-Phase IAM
+Bootstrap" above). If using custom SAs, the deployer SA
+(`{name}-deployer@{project}.iam.gserviceaccount.com`) receives its roles
+automatically via the bootstrap + Terraform flow.
+
+If using the default Cloud Build SA instead, it needs these roles:
 
 | Role | Purpose |
 |------|---------|
