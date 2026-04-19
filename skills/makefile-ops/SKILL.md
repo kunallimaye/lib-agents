@@ -24,7 +24,7 @@ project's development workflow.
 |--------|------|-------|-------|------------|------|------|
 | **Local dev** | `local-init` | `local-clean` | `local-build` | `local-run` | `local-test` | `local-lint` |
 | **Container dev** | `container-init` | `container-clean` | `container-build` | `container-run` | — | — |
-| **Cloud runtime** | `cloud-init` | `cloud-clean` | `cloud-build` | `cloud-deploy` | — | — |
+| **Cloud runtime** | `cloud-init` | `cloud-clean` | `cloud-build` | `cloud-deploy` / `cloud-promote` | — | — |
 | **Logs** | — | `logs-clean` | — | — | — | `logs-list` / `logs-last` |
 
 ### Thin-wrapper Pattern
@@ -59,6 +59,7 @@ help: ## Show this help
 ```
 scripts/
   common.sh        # Shared functions (always sourced first)
+  config.py        # Python TOML parser for config.toml
   local.sh         # Local dev operations
   container.sh     # Container operations (Podman)
   cloud.sh         # Cloud operations (gcloud, Cloud Build)
@@ -77,8 +78,10 @@ source "${SCRIPT_DIR}/common.sh"
 `common.sh` provides:
 - `set -euo pipefail` -- fail on errors, undefined vars, pipe failures
 - Colored logging: `log_info`, `log_ok`, `log_warn`, `log_error`, `die`
-- Environment loading from `.env` (if it exists)
+- Environment resolution: `ENVIRONMENT` (CLI > .env > default=staging)
+- Config loading from `config.toml` via `config.py` (falls back to `.env`)
 - Default variables: `PROJECT_NAME`, `IMAGE_NAME`, `IMAGE_TAG`, `GCP_PROJECT`, `GCP_REGION`
+- Derived variables: `TF_STATE_PREFIX`, `DEPLOYER_SA`, `RUNTIME_SA`
 - Helper functions: `require_cmd` (assert CLI exists), `confirm` (yes/no prompt)
 
 ### Subcommand Dispatch
