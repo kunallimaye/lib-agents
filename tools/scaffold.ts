@@ -749,6 +749,14 @@ app_promote() {
   [[ -z "\${VERSION:-}" ]] && die "VERSION is required (e.g., VERSION=v1.0.0)"
   [[ -z "\${IMAGE:-}" ]] && die "IMAGE is required (full URI of staging image to promote, e.g., IMAGE=us-central1-docker.pkg.dev/<cb-project>/\${PROJECT_NAME}/\${PROJECT_NAME}:sha-abc123f)"
 
+  # Validate IMAGE belongs to the CB project's AR (where promote is rooted).
+  # Cross-project promotion is not supported — the source image must live in
+  # \${CB_PROJECT}'s AR for the runtime SA cross-project read binding to work.
+  local expected_prefix="\${GCP_REGION}-docker.pkg.dev/\${CB_PROJECT}/\${PROJECT_NAME}/"
+  if [[ "\${IMAGE}" != "\${expected_prefix}"* ]]; then
+    die "IMAGE must start with '\${expected_prefix}' (got: \${IMAGE}). Source images must live in CB_PROJECT's Artifact Registry."
+  fi
+
   # Step 1: Tag the source image with the semver version
   log_info "Step 1/2: Tagging image as \${VERSION}..."
   gcloud artifacts docker tags add \\
