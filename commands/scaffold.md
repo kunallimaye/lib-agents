@@ -9,16 +9,16 @@ This is a project scaffolding workflow.
 
 1. Detect the project type (Node, Go, Python, etc.).
 2. Ask the user what to scaffold:
-   - **Everything** (Makefile + scripts + container files + Cloud Build + Terraform + .gitignore)
-   - **Local dev only** (Makefile + scripts + .gitignore)
-   - **Container dev** (Makefile + scripts + container files + .gitignore)
-   - **Full CI/CD** (all of the above + Cloud Build + Terraform)
-   - **Cloud Build + Terraform only** (no local/container scripts)
-   - **Full CI/CD with external HTTPS LB + DNS + multi-env promotion**
-     (everything; Terraform includes `lb.tf` + `dns.tf`, scripts include
+   - **Local Dev** (Makefile + scripts + .gitignore)
+   - **Container Dev** (Makefile + scripts + container files + .gitignore)
+   - **CI/CD Only** (Cloud Build + Terraform + .gitignore)
+   - **Full CI/CD** (Makefile + scripts + container files + Cloud Build + Terraform + .gitignore)
+   - **Everything** (alias for Full CI/CD)
+   - **Full CI/CD + External HTTPS LB + DNS + Multi-Env Promotion**
+     (Full CI/CD plus Terraform `lb.tf` + `dns.tf` and scripts
      `config.py` + `config.toml.example` + the multi-verb cloud
-     workflow `init / init-prod / infra / app-deploy / app-promote /
-     app-undeploy / clean`).
+     workflow `init` + `init-prod` + `infra` + `app-deploy` +
+     `app-promote` + `app-undeploy` + `clean`).
 3. If CI/CD is selected, confirm the user wants Terraform executed via Cloud
    Build (plan on PR, apply on merge).
 4. Run the `scaffold` tool with the appropriate `components` parameter

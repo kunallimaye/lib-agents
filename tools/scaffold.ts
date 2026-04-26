@@ -1016,7 +1016,12 @@ images:
 
 substitutions:
   _IMAGE_NAME: 'us-central1-docker.pkg.dev/\${PROJECT_ID}/app/app'
-  _SHORT_SHA: 'unknown'
+  # Note: _SHORT_SHA has no default. Cloud Build auto-populates \$SHORT_SHA
+  # for trigger-driven builds; for manual \`gcloud builds submit\`, the
+  # caller MUST pass \`--substitutions=_SHORT_SHA=<sha>\` (which
+  # scripts/cloud.sh::app_deploy does). Forcing a missing-substitution
+  # error here is preferable to silently tagging images :sha-unknown
+  # and overwriting one another across builds.
 
 options:
   logging: CLOUD_LOGGING_ONLY
@@ -1433,9 +1438,16 @@ resource "google_project_iam_member" "deployer_lb_admin" {
 #
 # IMPORTANT: \`time_sleep\` only sleeps on create or when one of its OWN
 # attributes (triggers, create_duration, destroy_duration) changes.
-# Adding bindings to \`depends_on\` does NOT re-trigger the wait. We use
-# \`triggers\` keyed on the IAM binding IDs so any change to the deployer
-# IAM set forces the time_sleep to be recreated and sleep again.
+# Adding bindings to \`depends_on\` does NOT re-trigger the wait.
+#
+# We key \`triggers\` on the SORTED SET OF ROLES granted (not on the
+# binding resource IDs). This is intentional for idempotency: a
+# conditional binding flipping in/out (e.g., LB admin appearing when
+# the LB stack is enabled) re-keys an ID-based trigger and forces a
+# spurious 120s wait on every apply that touches IAM. Keying on the
+# role set means the sleep only re-fires when the set of roles
+# actually changes — which is the only case where propagation needs
+# to be re-awaited.
 
 resource "time_sleep" "wait_for_iam" {
   depends_on = [
@@ -1449,15 +1461,15 @@ resource "time_sleep" "wait_for_iam" {
   ]
 
   triggers = {
-    iam_members = sha256(jsonencode([
-      google_project_iam_member.deployer_run_admin.id,
-      google_project_iam_member.deployer_ar_admin.id,
-      google_project_iam_member.deployer_sa_user.id,
-      google_project_iam_member.deployer_serviceusage_admin.id,
-      google_project_iam_member.deployer_sa_creator.id,
-      try(google_project_iam_member.deployer_network_admin[0].id, ""),
-      try(google_project_iam_member.deployer_lb_admin[0].id, ""),
-    ]))
+    iam_roles = sha256(jsonencode(sort(compact([
+      "roles/run.admin",
+      "roles/artifactregistry.admin",
+      "roles/iam.serviceAccountUser",
+      "roles/serviceusage.serviceUsageAdmin",
+      "roles/iam.serviceAccountCreator",
+      local.enable_lb ? "roles/compute.networkAdmin" : "",
+      local.enable_lb ? "roles/compute.loadBalancerAdmin" : "",
+    ]))))
   }
 
   create_duration = "120s"
@@ -1563,9 +1575,24 @@ resource "google_cloud_run_v2_service_iam_member" "public" {
 # On the primary env (staging) where project_id == cb_project, the
 # binding is skipped — the runtime SA already has access via in-project
 # IAM granted elsewhere.
+#
+# We resolve the repo via a \`data\` source instead of hardcoding
+# \`repository = var.service_name\`. This catches misconfiguration (typo,
+# the primary env not yet bootstrapped, repo renamed out from under us)
+# at PLAN time with a clear "data source not found" error, rather than
+# at apply time with a confusing IAM-binding error against a phantom
+# resource.
 
 locals {
   is_secondary_env = var.project_id != var.cb_project
+}
+
+data "google_artifact_registry_repository" "primary" {
+  count         = local.is_secondary_env ? 1 : 0
+  provider      = google.cb_project
+  project       = var.cb_project
+  location      = var.region
+  repository_id = var.service_name
 }
 
 resource "google_artifact_registry_repository_iam_member" "runtime_ar_reader" {
@@ -1573,7 +1600,7 @@ resource "google_artifact_registry_repository_iam_member" "runtime_ar_reader" {
   provider   = google.cb_project
   project    = var.cb_project
   location   = var.region
-  repository = var.service_name
+  repository = data.google_artifact_registry_repository.primary[0].repository_id
   role       = "roles/artifactregistry.reader"
   member     = "serviceAccount:\${google_service_account.runtime.email}"
 }
@@ -1622,6 +1649,19 @@ output "ssl_cert_name" {
 
 function generateTfLb(): string {
   return `# ─── External HTTPS Load Balancer in front of Cloud Run ──────────────
+#
+# IMPORTANT: This file defines \`local.enable_lb\` and
+# \`google_compute_global_address.lb_ip\`, which are referenced from
+# dns.tf and from the lb_ip / dns_fqdn / ssl_cert_name outputs in
+# outputs.tf. Do NOT delete this file to "disable the LB stack" — that
+# breaks dns.tf and the outputs with confusing
+# "local does not exist" / "resource not declared" errors.
+#
+# To disable the LB+DNS stack, leave the four gating variables empty in
+# your tfvars / Cloud Build substitutions (var.domain,
+# var.dns_project_id, var.dns_managed_zone, var.dns_record_name). All
+# resources here use \`count = local.enable_lb ? 1 : 0\` and become inert
+# when the gates are unset.
 #
 # Architecture:
 #   client → reserved IPv4 (anycast) → global external HTTPS LB
@@ -1772,6 +1812,18 @@ resource "google_compute_global_forwarding_rule" "http" {
 function generateTfDns(): string {
   return `# ─── DNS A record (in separate DNS project) ──────────────────────────
 #
+# IMPORTANT: This file depends on \`local.enable_lb\` and
+# \`google_compute_global_address.lb_ip\`, both defined in lb.tf. Do NOT
+# delete lb.tf or dns.tf to "disable the LB+DNS stack" — that breaks
+# this file and the lb_ip / dns_fqdn / ssl_cert_name outputs with
+# confusing "local does not exist" errors.
+#
+# To disable the stack, leave the four gating variables empty in your
+# tfvars / Cloud Build substitutions (var.domain, var.dns_project_id,
+# var.dns_managed_zone, var.dns_record_name). All resources here use
+# \`count = local.enable_lb ? 1 : 0\` and become inert when the gates
+# are unset.
+#
 # Writes a single A record into a pre-existing managed zone owned by a
 # different GCP project (\`var.dns_project_id\`). The deployer SA must hold
 # \`roles/dns.admin\` on that project — granted via gcloud during
@@ -1809,7 +1861,16 @@ import sys
 try:
     import tomllib
 except ModuleNotFoundError:
-    import tomli as tomllib  # Python < 3.11 fallback
+    try:
+        import tomli as tomllib  # Python < 3.11 fallback
+    except ModuleNotFoundError:
+        print(
+            "ERROR: config.py requires Python 3.11+ (for stdlib tomllib) "
+            "or the 'tomli' package on older Python.\\n"
+            "Fix: upgrade Python to 3.11+ OR run: pip install tomli",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
 
 def main():
