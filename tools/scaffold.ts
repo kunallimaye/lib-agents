@@ -1438,9 +1438,16 @@ resource "google_project_iam_member" "deployer_lb_admin" {
 #
 # IMPORTANT: \`time_sleep\` only sleeps on create or when one of its OWN
 # attributes (triggers, create_duration, destroy_duration) changes.
-# Adding bindings to \`depends_on\` does NOT re-trigger the wait. We use
-# \`triggers\` keyed on the IAM binding IDs so any change to the deployer
-# IAM set forces the time_sleep to be recreated and sleep again.
+# Adding bindings to \`depends_on\` does NOT re-trigger the wait.
+#
+# We key \`triggers\` on the SORTED SET OF ROLES granted (not on the
+# binding resource IDs). This is intentional for idempotency: a
+# conditional binding flipping in/out (e.g., LB admin appearing when
+# the LB stack is enabled) re-keys an ID-based trigger and forces a
+# spurious 120s wait on every apply that touches IAM. Keying on the
+# role set means the sleep only re-fires when the set of roles
+# actually changes — which is the only case where propagation needs
+# to be re-awaited.
 
 resource "time_sleep" "wait_for_iam" {
   depends_on = [
@@ -1454,15 +1461,15 @@ resource "time_sleep" "wait_for_iam" {
   ]
 
   triggers = {
-    iam_members = sha256(jsonencode([
-      google_project_iam_member.deployer_run_admin.id,
-      google_project_iam_member.deployer_ar_admin.id,
-      google_project_iam_member.deployer_sa_user.id,
-      google_project_iam_member.deployer_serviceusage_admin.id,
-      google_project_iam_member.deployer_sa_creator.id,
-      try(google_project_iam_member.deployer_network_admin[0].id, ""),
-      try(google_project_iam_member.deployer_lb_admin[0].id, ""),
-    ]))
+    iam_roles = sha256(jsonencode(sort(compact([
+      "roles/run.admin",
+      "roles/artifactregistry.admin",
+      "roles/iam.serviceAccountUser",
+      "roles/serviceusage.serviceUsageAdmin",
+      "roles/iam.serviceAccountCreator",
+      local.enable_lb ? "roles/compute.networkAdmin" : "",
+      local.enable_lb ? "roles/compute.loadBalancerAdmin" : "",
+    ]))))
   }
 
   create_duration = "120s"
