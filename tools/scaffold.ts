@@ -1016,7 +1016,12 @@ images:
 
 substitutions:
   _IMAGE_NAME: 'us-central1-docker.pkg.dev/\${PROJECT_ID}/app/app'
-  _SHORT_SHA: 'unknown'
+  # Note: _SHORT_SHA has no default. Cloud Build auto-populates \$SHORT_SHA
+  # for trigger-driven builds; for manual \`gcloud builds submit\`, the
+  # caller MUST pass \`--substitutions=_SHORT_SHA=<sha>\` (which
+  # scripts/cloud.sh::app_deploy does). Forcing a missing-substitution
+  # error here is preferable to silently tagging images :sha-unknown
+  # and overwriting one another across builds.
 
 options:
   logging: CLOUD_LOGGING_ONLY
