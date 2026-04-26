@@ -779,12 +779,16 @@ app_undeploy() {
   [[ -z "\${GCP_PROJECT}" ]] && die "GCP_PROJECT is not set. Add to config.toml or .env"
   [[ -z "\${TF_STATE_BUCKET}" ]] && die "TF_STATE_BUCKET is not set. Add to config.toml or .env"
 
-  # Set image to empty string — Terraform will use the placeholder
+  # Pass the \`__placeholder__\` sentinel — Terraform's main.tf substitutes
+  # the Cloud Run hello-world image when it sees this value. We use a
+  # sentinel rather than an empty \`_IMAGE=\` because some Cloud Build
+  # invocations reject empty substitution values, and \`cloudbuild-apply.yaml\`'s
+  # default of \`_IMAGE: ''\` is not guaranteed to work everywhere.
   gcloud builds submit "\${PROJECT_ROOT}" \\
     --project="\${CB_PROJECT}" \\
     --service-account="projects/\${CB_PROJECT}/serviceAccounts/\${CB_SERVICE_ACCOUNT}" \\
     --config="\${PROJECT_ROOT}/cicd/cloudbuild-apply.yaml" \\
-    --substitutions="_TF_ACTION=apply,$(_tf_substitutions),_IMAGE=" \\
+    --substitutions="_TF_ACTION=apply,$(_tf_substitutions),_IMAGE=__placeholder__" \\
     --quiet
 
   log_ok "Application undeployed (Cloud Run reverted to placeholder)"
@@ -1495,7 +1499,11 @@ resource "google_cloud_run_v2_service" "app" {
     labels          = { app = var.service_name }
 
     containers {
-      image = var.image != "" ? var.image : "us-docker.pkg.dev/cloudrun/container/hello:latest"
+      # The \`__placeholder__\` sentinel is passed by \`cloud.sh app-undeploy\`
+      # to revert the service to the upstream hello-world image without
+      # tearing down the Cloud Run resource. We treat it (and the empty
+      # string, for safety) the same as "no image specified".
+      image = (var.image == "" || var.image == "__placeholder__") ? "us-docker.pkg.dev/cloudrun/container/hello:latest" : var.image
 
       resources {
         limits = {
