@@ -484,6 +484,12 @@ init() {
 
   # Step 3: Create deployer SA (if not exists)
   log_info "Step 3/6: Creating deployer service account..."
+  # NOTE: This block assumes CB_PROJECT == GCP_PROJECT (enforced by the
+  # refusal guard above). The \`describe\` call uses the full SA email
+  # (CB_SERVICE_ACCOUNT) which is only valid in CB_PROJECT, while \`create\`
+  # uses the short DEPLOYER_SA_NAME. If the refusal guard is ever relaxed
+  # to allow init on a different project, this detection logic will break
+  # silently — switch to using the short name with --project=CB_PROJECT.
   if ! gcloud iam service-accounts describe "\${CB_SERVICE_ACCOUNT}" --project="\${GCP_PROJECT}" &>/dev/null; then
     gcloud iam service-accounts create "\${DEPLOYER_SA_NAME}" \\
       --display-name="\${PROJECT_NAME} Deployer" \\
