@@ -1650,6 +1650,19 @@ output "ssl_cert_name" {
 function generateTfLb(): string {
   return `# ─── External HTTPS Load Balancer in front of Cloud Run ──────────────
 #
+# IMPORTANT: This file defines \`local.enable_lb\` and
+# \`google_compute_global_address.lb_ip\`, which are referenced from
+# dns.tf and from the lb_ip / dns_fqdn / ssl_cert_name outputs in
+# outputs.tf. Do NOT delete this file to "disable the LB stack" — that
+# breaks dns.tf and the outputs with confusing
+# "local does not exist" / "resource not declared" errors.
+#
+# To disable the LB+DNS stack, leave the four gating variables empty in
+# your tfvars / Cloud Build substitutions (var.domain,
+# var.dns_project_id, var.dns_managed_zone, var.dns_record_name). All
+# resources here use \`count = local.enable_lb ? 1 : 0\` and become inert
+# when the gates are unset.
+#
 # Architecture:
 #   client → reserved IPv4 (anycast) → global external HTTPS LB
 #          → serverless NEG → Cloud Run
@@ -1798,6 +1811,18 @@ resource "google_compute_global_forwarding_rule" "http" {
 
 function generateTfDns(): string {
   return `# ─── DNS A record (in separate DNS project) ──────────────────────────
+#
+# IMPORTANT: This file depends on \`local.enable_lb\` and
+# \`google_compute_global_address.lb_ip\`, both defined in lb.tf. Do NOT
+# delete lb.tf or dns.tf to "disable the LB+DNS stack" — that breaks
+# this file and the lb_ip / dns_fqdn / ssl_cert_name outputs with
+# confusing "local does not exist" errors.
+#
+# To disable the stack, leave the four gating variables empty in your
+# tfvars / Cloud Build substitutions (var.domain, var.dns_project_id,
+# var.dns_managed_zone, var.dns_record_name). All resources here use
+# \`count = local.enable_lb ? 1 : 0\` and become inert when the gates
+# are unset.
 #
 # Writes a single A record into a pre-existing managed zone owned by a
 # different GCP project (\`var.dns_project_id\`). The deployer SA must hold
