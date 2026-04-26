@@ -1575,9 +1575,24 @@ resource "google_cloud_run_v2_service_iam_member" "public" {
 # On the primary env (staging) where project_id == cb_project, the
 # binding is skipped — the runtime SA already has access via in-project
 # IAM granted elsewhere.
+#
+# We resolve the repo via a \`data\` source instead of hardcoding
+# \`repository = var.service_name\`. This catches misconfiguration (typo,
+# the primary env not yet bootstrapped, repo renamed out from under us)
+# at PLAN time with a clear "data source not found" error, rather than
+# at apply time with a confusing IAM-binding error against a phantom
+# resource.
 
 locals {
   is_secondary_env = var.project_id != var.cb_project
+}
+
+data "google_artifact_registry_repository" "primary" {
+  count         = local.is_secondary_env ? 1 : 0
+  provider      = google.cb_project
+  project       = var.cb_project
+  location      = var.region
+  repository_id = var.service_name
 }
 
 resource "google_artifact_registry_repository_iam_member" "runtime_ar_reader" {
@@ -1585,7 +1600,7 @@ resource "google_artifact_registry_repository_iam_member" "runtime_ar_reader" {
   provider   = google.cb_project
   project    = var.cb_project
   location   = var.region
-  repository = var.service_name
+  repository = data.google_artifact_registry_repository.primary[0].repository_id
   role       = "roles/artifactregistry.reader"
   member     = "serviceAccount:\${google_service_account.runtime.email}"
 }
