@@ -1821,7 +1821,16 @@ import sys
 try:
     import tomllib
 except ModuleNotFoundError:
-    import tomli as tomllib  # Python < 3.11 fallback
+    try:
+        import tomli as tomllib  # Python < 3.11 fallback
+    except ModuleNotFoundError:
+        print(
+            "ERROR: config.py requires Python 3.11+ (for stdlib tomllib) "
+            "or the 'tomli' package on older Python.\\n"
+            "Fix: upgrade Python to 3.11+ OR run: pip install tomli",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
 
 def main():
