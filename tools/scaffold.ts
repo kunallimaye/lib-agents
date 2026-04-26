@@ -1286,13 +1286,41 @@ variable "ingress" {
 
 function generateTfMain(): string {
   return `# ─── GCP API Enablement ──────────────────────────────────────────────
+#
+# APIs are enabled in two phases to break a chicken-and-egg cycle:
+#
+#   1. \`bootstrap_apis\` — enables the meta-APIs (serviceusage, iam,
+#      cloudresourcemanager) that all subsequent gcloud/TF calls need.
+#      No \`depends_on\` — these MUST come first. Without serviceusage
+#      enabled, the project_iam_member bindings below would 403.
+#
+#   2. \`apis\` — enables the runtime APIs (run, artifactregistry,
+#      cloudbuild, compute). Depends on \`time_sleep.wait_for_iam\` so
+#      the deployer SA's IAM has propagated before TF tries to operate
+#      on those APIs through it.
+#
+# This split is what makes a brand-new-project apply work without any
+# prior gcloud bootstrap. Previously the whole \`apis\` set depended on
+# IAM bindings whose grants needed serviceusage already on, so the only
+# reason apply succeeded was that cloud-init Steps 1–4 had already
+# enabled serviceusage via gcloud.
+
+resource "google_project_service" "bootstrap_apis" {
+  for_each = toset([
+    "serviceusage.googleapis.com",
+    "iam.googleapis.com",
+    "cloudresourcemanager.googleapis.com",
+  ])
+  project            = var.project_id
+  service            = each.value
+  disable_on_destroy = false
+}
 
 resource "google_project_service" "apis" {
   for_each = toset([
     "run.googleapis.com",
     "artifactregistry.googleapis.com",
     "cloudbuild.googleapis.com",
-    "iam.googleapis.com",
     "compute.googleapis.com",
   ])
   service            = each.value
@@ -1302,23 +1330,34 @@ resource "google_project_service" "apis" {
 }
 
 # ─── Deployer SA: Functional roles (self-granted via projectIamAdmin) ──
+#
+# All deployer IAM bindings depend on \`bootstrap_apis\` so the
+# serviceusage / iam / cloudresourcemanager APIs are guaranteed to be on
+# before the IAM API tries to write the binding (which would otherwise
+# 403 on a brand-new project).
 
 resource "google_project_iam_member" "deployer_run_admin" {
   project = var.project_id
   role    = "roles/run.admin"
   member  = "serviceAccount:\${var.cb_service_account}"
+
+  depends_on = [google_project_service.bootstrap_apis]
 }
 
 resource "google_project_iam_member" "deployer_ar_admin" {
   project = var.project_id
   role    = "roles/artifactregistry.admin"
   member  = "serviceAccount:\${var.cb_service_account}"
+
+  depends_on = [google_project_service.bootstrap_apis]
 }
 
 resource "google_project_iam_member" "deployer_sa_user" {
   project = var.project_id
   role    = "roles/iam.serviceAccountUser"
   member  = "serviceAccount:\${var.cb_service_account}"
+
+  depends_on = [google_project_service.bootstrap_apis]
 }
 
 # Self-escalation chain extenders. With these two grants, the deployer SA
@@ -1333,12 +1372,16 @@ resource "google_project_iam_member" "deployer_serviceusage_admin" {
   project = var.project_id
   role    = "roles/serviceusage.serviceUsageAdmin"
   member  = "serviceAccount:\${var.cb_service_account}"
+
+  depends_on = [google_project_service.bootstrap_apis]
 }
 
 resource "google_project_iam_member" "deployer_sa_creator" {
   project = var.project_id
   role    = "roles/iam.serviceAccountCreator"
   member  = "serviceAccount:\${var.cb_service_account}"
+
+  depends_on = [google_project_service.bootstrap_apis]
 }
 
 # Compute network admin: required by the LB stack (global address, NEG,
@@ -1349,6 +1392,8 @@ resource "google_project_iam_member" "deployer_network_admin" {
   project = var.project_id
   role    = "roles/compute.networkAdmin"
   member  = "serviceAccount:\${var.cb_service_account}"
+
+  depends_on = [google_project_service.bootstrap_apis]
 }
 
 # Compute LB admin: required by the LB stack (backend services, URL maps,
@@ -1359,6 +1404,8 @@ resource "google_project_iam_member" "deployer_lb_admin" {
   project = var.project_id
   role    = "roles/compute.loadBalancerAdmin"
   member  = "serviceAccount:\${var.cb_service_account}"
+
+  depends_on = [google_project_service.bootstrap_apis]
 }
 
 # ─── Wait for IAM propagation ───────────────────────────────
