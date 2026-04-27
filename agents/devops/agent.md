@@ -39,81 +39,7 @@ permission:
     gcloud-ops: allow
     log-analysis: allow
   bash:
-    "*": deny
-    # Git operations scoped to workspaces — prevent branch switching in main tree
-    "git -C /tmp/agent-*": allow
-    "git remote*": allow
-    "git rev-parse*": allow
-    "git log*": allow
-    "git diff*": allow
-    "git show*": allow
-    "git ls-files*": allow
-    "git status*": allow
-    "git fetch*": allow
-    "git branch*": allow
-    "git stash*": allow
-    # GitHub CLI
-    "gh *": allow
-    # Workspace filesystem write ops (scoped to /tmp/agent-*)
-    "mkdir /tmp/agent-*": allow
-    "rm -rf /tmp/agent-*": allow
-    "rm -r /tmp/agent-*": allow
-    "rm /tmp/agent-*": allow
-    # Build & infrastructure tools
-    "make *": allow
-    "bash *": allow
-    "sh *": allow
-    # Language runtimes (builds and tests in workspace)
-    "npm *": allow
-    "npx *": allow
-    "bun *": allow
-    "node *": allow
-    "go *": allow
-    "cargo *": allow
-    "python3 *": allow
-    "pip *": allow
-    "pip3 *": allow
-    "podman *": allow
-    "buildah *": allow
-    "skopeo *": allow
-    "terraform *": allow
-    "tofu *": allow
-    "gcloud *": allow
-    "gsutil *": allow
-    "bq *": allow
-    "kubectl *": allow
-    "helm *": allow
-    "curl *": allow
-    "ss *": allow
-    "dig *": allow
-    "nslookup *": allow
-    "ping *": allow
-    "traceroute *": allow
-    "df *": allow
-    "du *": allow
-    "free *": allow
-    "ps *": allow
-    "top *": allow
-    "lsof *": allow
-    "uname *": allow
-    "cat *": allow
-    "ls *": allow
-    "find *": allow
-    "grep *": allow
-    "wc *": allow
-    "head *": allow
-    "tail *": allow
-    "chmod *": allow
-    "mkdir *": allow
-    "cp *": allow
-    "mv *": allow
-    "rm *": allow
-    "touch *": allow
-    "tree *": allow
-    "diff *": allow
-    "tar *": allow
-    "rg *": allow
-    "journalctl *": allow
+    "*": allow
 ---
 
 You are a DevOps operations assistant that enforces disciplined, issue-driven
@@ -192,9 +118,14 @@ branch must never change as a result of your work.
 **File Write Method**
 
 Use the standard `write`, `edit`, and `patch` tools for all file operations
-in the workspace. The `external_directory` permission grants access to
-`/tmp/agent-*` paths. Bash commands (`cat >`, `cp`, `mv`) are also available
-as alternatives via the bash permission allowlist.
+in the workspace. The `external_directory: "/tmp/agent-*": allow` permission
+grants those tools access to `/tmp/agent-*` paths and is the sole
+opencode-enforced filesystem-isolation guarantee for this agent. Bash is
+unrestricted (`bash: "*": allow`), so `cat > ...`, `tee`, `cp`, `mv`, and
+similar shell redirects are also available; redirects targeting paths
+outside `/tmp/agent-*` are subject to the same `external_directory` policy
+where opencode enforces it. The agent is trusted not to mutate the main
+project even where bash mechanics could permit it.
 
 Load the `devops-workflow` skill for branch naming conventions and the full
 issue-to-PR lifecycle reference.
