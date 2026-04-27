@@ -60,8 +60,6 @@
         "gh-review_approve": false,
         "gh-review_request_changes": false,
         "gh-review_comment_on_pr": false,
-        "pilot-workspace_*": false,
-        "pilot-run_*": false,
         "branch-cleanup_prune": false,
         "devops-preflight_*": false,
         "readme-analyze": false,

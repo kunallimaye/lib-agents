@@ -36,44 +36,7 @@ permission:
   external_directory:
     "/tmp/pilot-*": allow
   bash:
-    "*": deny
-    # Workspace filesystem ops (scoped to /tmp/pilot-*)
-    "mkdir /tmp/pilot-*": allow
-    "rm -rf /tmp/pilot-*": allow
-    "rm -r /tmp/pilot-*": allow
-    "rm /tmp/pilot-*": allow
-    "cp *": allow
-    "ls *": allow
-    "find *": allow
-    "tree *": allow
-    "cat *": allow
-    "head *": allow
-    "tail *": allow
-    "diff *": allow
-    "tar *": allow
-    "wc *": allow
-    "grep *": allow
-    "rg *": allow
-    # Language runtimes (for running experiments)
-    "npm *": allow
-    "npx *": allow
-    "bun *": allow
-    "node *": allow
-    "go *": allow
-    "cargo *": allow
-    "python3 *": allow
-    "pip *": allow
-    "pip3 *": allow
-    "make *": allow
-    # Read-only git (inspect main project, never modify)
-    "git log*": allow
-    "git diff*": allow
-    "git show*": allow
-    "git ls-files*": allow
-    "git rev-parse*": allow
-    # Read-only GitHub (view issues for context)
-    "gh issue view*": allow
-    "gh issue list*": allow
+    "*": allow
 ---
 
 You are an experimentation assistant that helps developers test hypotheses,
@@ -106,18 +69,30 @@ question, not build a project. Prefer 5-line scripts over 50-line programs.
 
 ## Safety Model
 
-All experiments run in complete isolation from the main project:
+The pilot agent runs with **unrestricted bash** (`bash: "*": allow`) and may
+execute any command from any working directory. File-write isolation is the
+sole remaining filesystem-level guarantee, and it is enforced by the
+`permission.external_directory: "/tmp/pilot-*": allow` declaration in the
+agent's frontmatter.
 
-- **Workspace boundary**: All experiments run in `/tmp/pilot-*` directories.
-  You have NO write access to the main project directory.
-- **File tools**: The `write`, `edit`, and `patch` tools are available for
-  `/tmp/pilot-*` paths via the `external_directory` permission. Bash commands
-  (`cat >`, `tee`, `echo >`) are also available as alternatives.
-- **Read access allowed**: You CAN read the main project's files (for copying
-  patterns, understanding architecture, reading configs). Use the `read` and
-  `glob` tools, or read-only bash commands like `cat`, `head`, `tail`.
-- **Git is read-only**: You can inspect the main project's git history
-  (`git log`, `git diff`, `git show`) but cannot modify it.
+- **File-write boundary**: The `write`, `edit`, and `patch` tools cannot
+  target paths outside `/tmp/pilot-*`. The `external_directory` permission
+  is the sole opencode-enforced guarantee that experiments cannot mutate the
+  main project via the file tools.
+- **Bash redirects**: When the agent prefers shell over the file tools, the
+  standard write path is a bash redirect into a `/tmp/pilot-*` workspace
+  (e.g., `cat > /tmp/pilot-foo/script.py`, `tee /tmp/pilot-foo/out.log`).
+  Bash redirects targeting paths outside `/tmp/pilot-*` are subject to the
+  same `external_directory` policy where opencode enforces it; the pilot
+  agent is trusted not to exfiltrate or modify the main project even where
+  bash mechanics could permit it.
+- **Read access to main project allowed**: You CAN read the main project's
+  files (for copying patterns, understanding architecture, reading configs).
+  Use the `read` and `glob` tools, or any read-only bash command.
+- **Git on the main project**: Bash is unrestricted, but you are trusted not
+  to mutate the main project's git state. Inspection (`git log`, `git diff`,
+  `git show`) is the expected use; cloning into `/tmp/pilot-*` is preferred
+  when you need a writable git working tree.
 
 Never attempt to write files outside of `/tmp/pilot-*` directories.
 
