@@ -13,6 +13,7 @@ Each agent is a self-contained package with custom tools, slash commands, skills
 | [devops](agents/devops/) | Issue-driven DevOps workflows -- Makefile scaffolding, Podman containers, Terraform IaC, Cloud Build CI/CD, GCP operations | git-ops, docs |
 | [ideate](agents/ideate/) | Audience-centered creative brainstorming -- diverge-evaluate-converge ideation with multiple perspective lenses | git-ops, docs |
 | [pilot](agents/pilot/) | Isolated experimentation -- test hypotheses, reproduce bugs, and prototype in ephemeral `/tmp/pilot-*` workspaces | git-ops |
+| [orchestrator](agents/orchestrator/) | Planning orchestrator -- analyze, plan, and delegate execution to specialist subagents (avoids OpenCode plan-mode runtime conflict) | git-ops, devops, docs, ideate, pilot, scribe |
 
 ## Quick Start
 

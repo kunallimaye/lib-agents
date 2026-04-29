@@ -1,0 +1,6 @@
+{
+  "name": "opencode-orchestrator",
+  "version": "0.1.0",
+  "description": "Planning orchestrator agent for OpenCode TUI -- plan-then-delegate without OpenCode plan-mode runtime tension",
+  "dependencies": {}
+}
