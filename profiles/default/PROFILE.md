@@ -1,6 +1,6 @@
 ---
 name: default
-description: Standard operational setup — DevOps, Git, docs, ideation, and pilot agents with core operational skills
+description: Standard operational setup — DevOps, Git, docs, ideation, pilot, scribe, and orchestrator agents with core operational skills
 
 agents:
   - git-ops
@@ -8,6 +8,8 @@ agents:
   - docs
   - ideate
   - pilot
+  - scribe
+  - orchestrator
 
 agent_skills:
   build: []
@@ -23,11 +25,13 @@ agent_skills:
   docs:
     - readme-conventions
   pilot: []
+  scribe: []
+  orchestrator: []
 ---
 
 # Default Profile
 
-Standard operational setup with 5 agents and 8 operational skills. This is the
+Standard operational setup with 7 agents and 8 operational skills. This is the
 baseline configuration suitable for any project that uses the lib-agents DevOps
 workflow.
 
@@ -40,6 +44,8 @@ workflow.
 | `docs` | README and documentation maintenance |
 | `ideate` | Brainstorming and creative ideation |
 | `pilot` | Isolated experimentation and hypothesis testing |
+| `scribe` | Codebase-grounded technical writing (blog posts, deep-dives, explainers) |
+| `orchestrator` | Plan-then-delegate workflow agent (delegates execution to other agents via Task; no direct edits) |
 
 ## Included Skills
 
