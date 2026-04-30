@@ -9,12 +9,53 @@ description: >
 mode: primary
 temperature: 0.4
 tools:
+  # Core orchestration
   task: true
   read: true
   glob: true
   grep: true
   webfetch: true
   todowrite: true
+  question: true
+  skill: true
+
+  # Read-only GitHub inspection
+  gh-issue_view: true
+  gh-issue_list: true
+  gh-pr_view: true
+  gh-pr_list: true
+  gh-review_diff: true
+  gh-review_list_reviews: true
+  gh-release_view: true
+  gh-release_list: true
+  gh-release_generate_notes: true
+
+  # Read-only git state
+  git-status_status: true
+  git-status_diff: true
+  git-status_log: true
+  git-status_blame: true
+  git-status_stash_list: true
+  git-branch_list: true
+  git-branch_current: true
+  git-conflict_detect: true
+  git-conflict_show: true
+  git-commit_diff_staged: true
+
+  # Workspace inventory (read-only)
+  agent-workspace_list: true
+  pilot-workspace_list: true
+  pilot-workspace_inspect: true
+  branch-cleanup_list_stale: true
+
+  # Documentation analysis (read-only)
+  readme-analyze: true
+  readme-validate: true
+
+  # Environment readiness check (read-only)
+  git-ops-init: true
+
+  # Mutation tools — explicitly disabled
   write: false
   edit: false
   patch: false
@@ -97,6 +138,11 @@ responsible for safe execution within its own sandbox.
 
 Permitted Task targets:
 
+- **`@explore`** — fast codebase reconnaissance for planning. Native
+  OpenCode agent (built into the runtime, not lib-agents-managed). Use
+  when you need to find files by patterns, search for keywords/symbols,
+  or answer codebase questions before constructing a plan. Specify
+  thoroughness: `quick`, `medium`, or `very thorough`.
 - **`@pilot`** — hypothesis testing, bug reproduction, prototyping. Runs in
   ephemeral `/tmp/pilot-*` workspaces with file-write isolation enforced by
   `external_directory`. Use for "does X work?" / "can I reproduce this?" /
@@ -166,6 +212,8 @@ specialist receives the same brief format it has been trained to consume.
 
 ## Choosing the Right Specialist
 
+- Need to map the codebase, find files, or search for symbols before
+  planning → `@explore`
 - Code analysis says "we need to verify X behaves like Y" → `@pilot`
 - Plan calls for any file change, commit, PR, container build, infra
   change, or deployment → `@devops`

@@ -9,6 +9,7 @@ Task tool instead of handling these tasks directly.
 
 | When the user asks about... | Delegate to | The agent handles... |
 |---|---|---|
+| Codebase reconnaissance, fast file/keyword searches during planning | `@explore` | Read-only codebase exploration with quick/medium/very thorough thoroughness levels (built-in OpenCode agent) |
 | Read-only GitHub queries (view issues, list PRs, check status, diffs) | `@git-ops` | Git/GitHub read operations with safety rails |
 | Write GitHub operations (create issues, commits, PRs, reviews, releases, merges) | `@devops` | Issue-driven Git/GitHub writes with pre-flight checks, docs validation, and test validation |
 | Scaffolding, containers, Terraform, CI/CD, GCP, deployment | `@devops` | Issue-driven DevOps workflows with pre-flight checks |
@@ -38,6 +39,8 @@ Task tool instead of handling these tasks directly.
 
 ## Quick Reference
 
+- "find files matching X" / "search the codebase" / "where is Y defined?" → `@explore`
+- "explore the codebase" / "map this project" → `@explore`
 - "view this issue" / "list PRs" / "check git status" / "show diff" → `@git-ops`
 - "create an issue" / "file a bug" / "track this" → `@devops`
 - "commit these changes" / "open a PR" / "merge" → `@devops`
