@@ -1,5 +1,9 @@
 # OpenCode local install artifacts
 .opencode/
+# opencode.json references {file:.opencode/...} prompts which live under the
+# gitignored .opencode/ tree; committing this file breaks opencode startup in
+# fresh clones. See issue #134.
+opencode.json
 
 # Dependencies
 node_modules/
