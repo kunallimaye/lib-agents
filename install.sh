@@ -1522,7 +1522,7 @@ Arguments:
   agent-name    One or more agent names to install (e.g., git-ops docs)
 
 Install Options:
-  --all, -a     Install all available agents (shorthand for --profile default)
+  --all, -a     Install agents from the default profile (shorthand for --profile default)
   --profile <n> Install using a named profile (e.g., default, sol-dev)
   --profiles    List available profiles with descriptions
   --project     Install to .opencode/ in the current directory (default)
