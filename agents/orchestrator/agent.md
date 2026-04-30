@@ -52,10 +52,8 @@ tools:
   readme-analyze: true
   readme-validate: true
 
-  # Environment readiness checks (read-only)
+  # Environment readiness check (read-only)
   git-ops-init: true
-  git-ops-init_getEnvironmentReport: true
-  git-ops-init_ensureEnvironment: true
 
   # Mutation tools — explicitly disabled
   write: false
