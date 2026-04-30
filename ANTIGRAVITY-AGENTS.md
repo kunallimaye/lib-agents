@@ -30,6 +30,7 @@ When handling specific domains, delegate to the appropriate specialist role (via
 
 | Domain / Task | Role | Handles |
 |---|---|---|
+| Codebase reconnaissance, fast file/keyword searches | `@explore` | Read-only codebase exploration (built-in agent) |
 | Read-only GitHub queries (view issues, list PRs, check status, diffs) | `@git-ops` | Git/GitHub read operations |
 | Write GitHub operations (create issues, commits, PRs, reviews, merges) | `@devops` | Issue-driven Git/GitHub writes (may delegate to `@git-ops`) |
 | Scaffolding, containers, Terraform, CI/CD, GCP, deployment | `@devops` | Infrastructure and deployment workflows |
