@@ -759,7 +759,7 @@ generate_manifest_for_existing() {
   fi
 
   # Scan user-tier root files
-  for root_file in AGENTS.md opencode.json; do
+  for root_file in AGENTS.md; do
     if [ -f "${project_root}/${root_file}" ]; then
       record_file "${project_root}/${root_file}" "user"
     fi
@@ -1109,7 +1109,7 @@ update_installation() {
 
   # Scan new source: root config files (user tier)
   if should_include_type "configs" "$only_filter"; then
-    for root_file in AGENTS.md opencode.json; do
+    for root_file in AGENTS.md; do
       if [ -f "${REPO_ROOT}/${root_file}" ]; then
         local dest="${project_root}/${root_file}"
         NEW_FILES["$dest"]="${REPO_ROOT}/${root_file}"
@@ -1890,7 +1890,7 @@ install_agent() {
   # Install ALL shared resources (tools, skills, commands, prompts) once
   install_shared_resources "$target" "$use_link"
 
-  # Install project-root config files (AGENTS.md, opencode.json)
+  # Install project-root config files (AGENTS.md)
   # These go to the project root, not inside .opencode/
   local project_root
   if [ "$mode" = "project" ]; then
@@ -1899,47 +1899,18 @@ install_agent() {
     project_root="${HOME}/.config/opencode"
   fi
 
-  for root_file in AGENTS.md opencode.json; do
+  for root_file in AGENTS.md; do
     if [ -f "${REPO_ROOT}/${root_file}" ]; then
       local root_dest="${project_root}/${root_file}"
       if [ -f "$root_dest" ]; then
         warn "${root_file} already exists at ${root_dest}. Skipping."
         record_file "$root_dest" "user"
       else
-        # opencode.json in --global mode needs a post-process to strip
-        # the .opencode/ segment from {file:...} refs. The shipped
-        # config uses {file:.opencode/prompts/build.md} and similar,
-        # which only resolve correctly in --project mode (where
-        # .opencode/ is a real subdir of the install root). In
-        # --global mode, the install root IS the equivalent of
-        # what .opencode/ is in --project mode — there's no
-        # .opencode/ segment — so opencode crashes on every command:
-        #   Error: Configuration is invalid at ~/.config/opencode/opencode.json:
-        #   bad file reference: "{file:.opencode/prompts/build.md}"
-        #   ~/.config/opencode/.opencode/prompts/build.md does not exist
-        #
-        # The rewrite requires `cp` (not `ln -s`), so we override
-        # link mode for opencode.json specifically with a warning —
-        # the config is "user-owned" and shouldn't auto-update from
-        # the repo anyway, so the loss of --link convenience here is
-        # acceptable. Other root files (AGENTS.md) still respect
-        # --link as requested.
-        local needs_global_rewrite=false
-        if [ "$mode" = "global" ] && [ "$root_file" = "opencode.json" ]; then
-          needs_global_rewrite=true
-        fi
-
-        if [ "$use_link" = true ] && [ "$needs_global_rewrite" = false ]; then
+        if [ "$use_link" = true ]; then
           ln -sf "$(realpath "${REPO_ROOT}/${root_file}")" "$root_dest"
           ok "Linked ${root_file} -> project root"
         else
-          if [ "$use_link" = true ] && [ "$needs_global_rewrite" = true ]; then
-            warn "${root_file} cannot be symlinked in --global mode (path rewrite required); copying instead."
-          fi
           cp "${REPO_ROOT}/${root_file}" "$root_dest"
-          if [ "$needs_global_rewrite" = true ]; then
-            sed -i 's|{file:\.opencode/|{file:./|g' "$root_dest"
-          fi
           ok "Copied ${root_file} -> project root"
         fi
         record_file "$root_dest" "user"

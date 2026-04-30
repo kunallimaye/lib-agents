@@ -1,0 +1,59 @@
+name: repo-hygiene
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  repo-hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check no opencode.json variant is tracked
+        run: |
+          set -euo pipefail
+          tracked=$(git ls-files \
+            ':(top)opencode.json' \
+            ':(top)opencode.json5' \
+            ':(top)opencode.jsonc' \
+            ':(top)opencode.yaml' \
+            ':(top)opencode.yml' \
+            '**/opencode.json' \
+            '**/opencode.json5' \
+            '**/opencode.jsonc' \
+            '**/opencode.yaml' \
+            '**/opencode.yml' || true)
+          if [ -n "$tracked" ]; then
+            echo "::error::opencode.json (or variant) is tracked in the repo:"
+            echo "$tracked"
+            echo "These files are user-local and gitignored. See issue #134 / PR #135."
+            exit 1
+          fi
+          echo "OK: no opencode.json variant tracked."
+
+      - name: Check no broken file directive in config files
+        run: |
+          set -euo pipefail
+          # Scope to config-file extensions only. Shell scripts (install.sh)
+          # and .gitignore intentionally reference the pattern in comments
+          # / sed strings and must not be flagged. The pattern is built from
+          # parts to avoid this workflow file itself tripping the check.
+          pattern='\{'"file"':\.opencode'
+          # Exclude this workflow file from the scan (it discusses the pattern).
+          matches=$(git ls-files -- \
+            '*.json' '*.json5' '*.jsonc' \
+            '*.yaml' '*.yml' '*.toml' \
+            ':!:.github/workflows/repo-hygiene.yml' \
+            | xargs -r grep -l "$pattern" || true)
+          if [ -n "$matches" ]; then
+            echo "::error::Broken opencode file directive found in:"
+            echo "$matches"
+            echo "See PR #135 for context. The .opencode/ dir is gitignored;"
+            echo "refs to it break opencode startup on fresh clones."
+            exit 1
+          fi
+          echo "OK: no broken opencode file directives in tracked config files."
