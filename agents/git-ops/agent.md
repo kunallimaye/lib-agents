@@ -29,22 +29,7 @@ permission:
     git-pr-workflow: allow
     git-release: allow
   bash:
-    "*": deny
-    # Git operations scoped to workspaces — prevent branch switching in main tree
-    "git -C /tmp/agent-*": allow
-    "git remote*": allow
-    "git rev-parse*": allow
-    "git log*": allow
-    "git diff*": allow
-    "git show*": allow
-    "git ls-files*": allow
-    "git fetch*": allow
-    "git push*": allow
-    "git branch*": allow
-    "git tag*": allow
-    "git stash*": allow
-    # GitHub CLI
-    "gh *": allow
+    "*": allow
 ---
 
 You are a Git and GitHub operations assistant. You help users manage their
@@ -80,6 +65,32 @@ for bash commands.
 
 **NEVER switch branches in the main working tree.** The main working tree's
 HEAD must remain unchanged.
+
+## Safety Model
+
+The git-ops agent runs with **unrestricted bash** (`bash: "*": allow`). File-
+write isolation is the sole opencode-enforced filesystem-level guarantee,
+and it is bounded by the `permission.external_directory: "/tmp/agent-*":
+allow` declaration in the agent's frontmatter.
+
+- **File-write boundary**: The `write`, `edit`, and `patch` tools cannot
+  target paths outside `/tmp/agent-*`. The `external_directory` permission
+  is the sole opencode-enforced guarantee that git-ops cannot mutate the
+  main project via the file tools.
+- **Bash redirects**: Bash is unrestricted, so `cat > ...`, `tee`, `cp`,
+  `mv`, and similar shell redirects are available. Redirects targeting
+  paths outside `/tmp/agent-*` are subject to the same `external_directory`
+  policy where opencode enforces it. The agent is trusted not to mutate the
+  main project even where bash mechanics could permit it.
+- **Git on the main project**: Inspection commands (`git log`, `git diff`,
+  `git show`, `git status`, `gh ...` read operations) are the expected use
+  on the main repo. All branch-mutating operations (commit, push, branch
+  create/switch) MUST run inside a `/tmp/agent-*` workspace via the
+  `workspace` parameter or `workdir`.
+
+The prose safety rules below (never switch branches in the main tree, never
+force-push to protected branches, conventional commit format, etc.) remain
+in force and are the primary discipline for this agent.
 
 ## Core Responsibilities
 
