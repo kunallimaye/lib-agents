@@ -194,8 +194,72 @@ provider "google" {
 - Store state in a GCS backend: `terraform { backend "gcs" { bucket = "..." } }`
 - Use workspaces for environment separation (dev/staging/prod)
 
+## Identity Tokens from the Metadata Server: ALWAYS `format=full`
+
+When a GCP workload (Cloud Run service, GKE pod, GCE VM, Cloud Workstation)
+fetches an identity token to call an IAM-gated Cloud Run service, it goes
+through the local metadata server:
+
+```bash
+curl -H "Metadata-Flavor: Google" \
+  "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience=https://my-svc-...run.app&format=full"
+```
+
+**The `format=full` query param is mandatory.** Without it, the returned
+token has only the `sub` claim. For "normal" service accounts that's
+enough — but for Cloud Workstations runtime SAs and a handful of other
+edge cases, the token comes back without the `email` claim, and the
+receiver's Cloud Run service rejects with **403** at the platform-IAM
+layer (before any code in the receiver runs).
+
+This bit `mkt-desk` hard in `kunal-labs/onchain-markets#91`. The fix is
+defensive and has no downside — `format=full` always returns a richer
+token; no payload-size or latency cost worth worrying about.
+
+**Bake it in.** Any client code (Rust, Go, Python) that fetches identity
+tokens from the metadata server should default to `format=full`. The
+scaffold doesn't generate identity-token client code today, but if/when
+it does, this is the default.
+
+## Cross-project IAM Grants
+
+When the three-role topology (per `cloudbuild-ops` skill) splits roles
+across projects, IAM grants become cross-project. The pattern:
+
+```bash
+# Local grant (member's project == target project): no --billing-project
+gcloud projects add-iam-policy-binding "${BUILD_PROJECT}" \
+  --member="serviceAccount:${BUILDER_SA_EMAIL}" \
+  --role="roles/storage.admin" \
+  --condition=None --quiet
+
+# Cross-project grant: add --billing-project=<target> so the API call
+# is billed to the target project (otherwise an org policy can reject
+# the call as "no billing project").
+gcloud projects add-iam-policy-binding "${RUNTIME_PROJECT}" \
+  --billing-project="${RUNTIME_PROJECT}" \
+  --member="serviceAccount:${BUILDER_SA_EMAIL}" \
+  --role="roles/run.admin" \
+  --condition=None --quiet
+```
+
+The scaffolded `scripts/cloud.sh` has a `_grant_role` helper that
+branches automatically on local-vs-cross — emits an operator log line
+when the grant is cross-project so the operator can spot mis-topology
+at a glance.
+
+**Required operator authority for cross-project grants.** The operator
+running `make admin-cloud-init` needs `setIamPolicy` on every project in
+the topology that receives an IAM grant. In a fully-split topology,
+that's three or four projects — usually requires coordination across
+the orgs that own each project.
+
 ## Agent Integration
 
 - NEVER modify IAM policies without showing the diff and getting user
   confirmation.
 - ALWAYS show what will change before executing destructive GCP operations.
+- ALWAYS default to `format=full` on metadata-server identity-token fetches
+  in any generated client code.
+- When the topology is split, ALWAYS surface the cross-project grants in
+  the operator log — silent cross-project grants are a debug nightmare.

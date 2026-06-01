@@ -42,6 +42,35 @@ local-build: ## Build the project locally
 - Add `## description` comments for `make help` support
 - All `.PHONY` targets declared at the top
 
+### Hard rule: Makefile = operator interface, scripts = implementation
+
+This is the convention, not a suggestion (#141 lesson 5 + #140):
+
+**`make <target>` is the operator interface. Bash scripts under
+`scripts/` are the implementation.** Never document `bash scripts/foo.sh
+...` directly in READMEs, runbooks, or onboarding docs. Always wrap in
+`make foo` and document the Make target.
+
+Why:
+
+- The Make target engages logging (`start_log`), trap handlers, and
+  the heartbeat / checkpoint / recovery machinery in `scripts/common.sh`.
+  Direct `bash` invocation bypasses those — orphaned cloud resources
+  on shell disconnect (the failure shape that motivated #140).
+- The Make target is what `make help` discovers. Adding an operator-
+  facing target that's invokable only via raw `bash` makes it
+  invisible to discovery.
+- The Make target is the diff-reviewable surface. Bash script flag
+  changes hide; Make target renames don't.
+- Future-you and any subagent re-reading the project six months later
+  knows where to look: `make help` first, scripts/ only when
+  debugging.
+
+The scaffold bakes this in: every script gets a Makefile wrapper, and
+the generated `scripts/cloud.sh` includes a header comment telling
+operators "never invoke this script directly — go through `make
+<target>`."
+
 ### Help Target
 
 Include a `help` target that extracts descriptions from `##` comments:
@@ -177,10 +206,32 @@ making it easy to review past runs and diagnose failures.
 ### Rust
 - **init**: `cargo fetch`
 - **build**: `cargo build --release`
-- **run**: `cargo run`
+- **run**: `cargo run --release` *(operator-facing run is release by
+  default; #141 lesson 5. Dev profile is fine for `cargo test`, wrong
+  for "operator-facing run this against prod." Add a `local-run-dev`
+  target with bare `cargo run` if you need the dev profile.)*
 - **test**: `cargo test`
 - **lint**: `cargo clippy -- -D warnings`
 - **Dockerfile**: Multi-stage with `rust:1.77-alpine`, `distroless` runtime
+
+#### Sibling crates: distinct bin names
+
+In a Cargo workspace with multiple crates each shipping `src/bin/<name>.rs`,
+Cargo warns about colliding output filenames (e.g., both crates produce a
+`target/debug/server` binary). This will become a hard error in a future
+Cargo release.
+
+The fix: set distinct bin names per crate in each `Cargo.toml`:
+
+```toml
+[[bin]]
+name = "agent-mkt-historical"
+path = "src/bin/server.rs"
+```
+
+The scaffold's Rust workspace template enforces this. When adding a new
+sibling crate, pick a unique bin name (prefix with the crate's short
+name is the convention).
 
 ### Java
 - **init**: `mvn dependency:resolve` or `gradle dependencies`
@@ -206,7 +257,14 @@ making it easy to review past runs and diagnose failures.
 
 - All operational tasks go through `make` targets. If a project has no
   Makefile, offer to scaffold one first using the `scaffold` tool.
+- NEVER document or invoke `bash scripts/foo.sh ...` directly — always
+  go through `make foo`. The wrappers engage trap handlers + heartbeat
+  / checkpoint machinery (see `scripts/common.sh`); direct invocation
+  bypasses them.
 - Detect the project type automatically and tailor all generated files.
 - Scaffolding generates Makefile, modular scripts in `scripts/`, container
-  files, Cloud Build configs, and Terraform modules -- all in `cicd/`.
+  files, Cloud Build configs, Terraform modules, the custom deployer-role
+  YAML in `cicd/iam/`, the cloud-topology ADR template in
+  `docs/decisions/`, the detached-orchestration section in
+  `AGENTS.local.md`, and `.gitignore` (including `.orchestration/`).
 - Use the `scaffold` tool directly. Do not delegate scaffolding to other agents.

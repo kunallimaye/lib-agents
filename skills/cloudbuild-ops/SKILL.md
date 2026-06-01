@@ -127,24 +127,81 @@ terraform {
 The bucket name is passed as a substitution: `_TF_STATE_BUCKET`.
 Convention: `${PROJECT_ID}-tfstate` with prefix matching the service name.
 
-### Service Account Permissions
+### Three-role topology + two-SA model (issue #141)
 
-The Cloud Build service account (`<project-number>@cloudbuild.gserviceaccount.com`)
-needs these roles:
+The scaffolded projects use a **three-role topology** (orchestration / build /
+runtime) and a **two-SA model** with explicit predefined roles. Replaces the
+old "two-phase IAM with TF self-escalation" framing from #116.
 
-| Role | Purpose |
-|------|---------|
-| `roles/artifactregistry.admin` | Push images to Artifact Registry |
-| `roles/run.admin` | Deploy Cloud Run services |
-| `roles/iam.serviceAccountUser` | Act as the service account |
-| `roles/storage.admin` | Read/write Terraform state in GCS |
+**Roles:**
 
-Grant via:
-```bash
-gcloud projects add-iam-policy-binding PROJECT_ID \
-  --member="serviceAccount:<number>@cloudbuild.gserviceaccount.com" \
-  --role="roles/run.admin"
-```
+| Role            | What it owns                                          |
+|-----------------|-------------------------------------------------------|
+| orchestration   | Agent SA (operator identity), custom IAM role, daily-deploy entry point |
+| build           | Builder SA, Cloud Build, Artifact Registry, TF state |
+| runtime         | Runtime SA, Cloud Run service, service-managed resources |
+
+The 90% case: all three roles collapse to one project. Splitting later is
+a config edit, not a refactor — bootstrap script + TF + operator commands
+all work identically; only IAM grants branch local-vs-cross-project.
+
+**Two service accounts** (NOT the default Cloud Build SA, NOT the default
+Compute Engine SA):
+
+| SA          | Lives in    | Permissions                                | Used by                                |
+|-------------|-------------|--------------------------------------------|----------------------------------------|
+| **agent**   | orch project| Custom role (curated YAML, 30-day expiry)  | Human/CI operator running daily deploys|
+| **builder** | build project| 6 predefined functional roles + storage.admin| Cloud Build via `--service-account=...`|
+
+**Custom role for the agent SA** (NOT predefined). Lives in
+`cicd/iam/<project>-deployer-role.yaml`, diff-reviewable in git. The
+30-day expiry condition on the agent → custom-role binding forces
+graceful credential rotation; re-run `make admin-cloud-init` to refresh.
+
+**Builder SA's 6 predefined roles** (scoped to what TF actually needs to
+construct resources):
+
+| Role                              | On project | Why                              |
+|-----------------------------------|------------|----------------------------------|
+| `roles/run.admin`                 | runtime    | Deploy Cloud Run services        |
+| `roles/artifactregistry.admin`    | runtime    | Manage AR repo (existence checks)|
+| `roles/iam.serviceAccountUser`    | runtime    | actAs runtime SA                 |
+| `roles/iam.serviceAccountAdmin`   | runtime    | Create + manage runtime SA       |
+| `roles/logging.logWriter`         | runtime    | Cloud Build log emission         |
+| `roles/storage.admin`             | build      | TF state bucket + CB staging     |
+
+**NOT granted to the builder SA** (these would defeat the agent's
+least-privilege model — agent can impersonate builder via Cloud Build,
+so anything granted to builder becomes part of agent's effective authority):
+
+- `roles/resourcemanager.projectIamAdmin`
+- `roles/serviceusage.serviceUsageAdmin`
+- `roles/iam.serviceAccountCreator`
+- `roles/compute.networkAdmin`
+- `roles/compute.loadBalancerAdmin`
+
+### TF / admin-cloud-init boundary (non-negotiable)
+
+Per issue #141 lesson 1, **Terraform does NOT mutate project scope**.
+The boundary is:
+
+| Layer                  | Owns                                                          |
+|------------------------|---------------------------------------------------------------|
+| `admin-cloud-init`     | API enablement; AR repo creation; TF state bucket creation; project-wide IAM of other principals (agent SA → custom role; builder SA → predefined functional roles; agent SA → actAs on builder SA) |
+| Terraform (`main.tf`)  | Resource construction: runtime SA, Cloud Run service, IAM bindings on Terraform's own resources (run.invoker, cross-project AR reader, LB/DNS) |
+
+The pre-#141 scaffold had Terraform doing a two-phase API enable
+(`bootstrap_apis` + `apis`) and self-grant chains
+(`google_project_iam_member.deployer_*`). That worked but required
+granting the builder SA `projectIamAdmin` + `serviceUsageAdmin`, which
+defeats the agent's curated-role design. **Removed entirely in #141.**
+
+**Pre-existing build-project resources are read via `data` sources.**
+The AR repo is read into `main.tf` via
+`data "google_artifact_registry_repository" "app"`. This makes the
+dependency on the bootstrap step explicit at *plan* time: a missing
+repo fails with a clear "data source not found" error instead of a
+confusing IAM-binding error at apply time.
 
 ## Trigger Types
 
@@ -209,13 +266,38 @@ gcloud builds triggers run TRIGGER_ID --branch=main
 | Substitution not resolved | Ensure variable starts with `_` and is declared in `substitutions` |
 | Build timeout | Increase `timeout` in `options` (default: 10 minutes) |
 
+## Reference: lessons baked in (issue #141)
+
+Six concrete bug-class lessons from the `kunal-labs/onchain-markets` cloud
+workstream (epic #44, 4 restructure passes for "deploy a Cloud Run service
+in Tokyo"). All preventable from the scaffold; all now baked in:
+
+1. **TF does not self-escalate IAM.** Project-scope concerns live in
+   `admin-cloud-init`. Builder SA holds only 6 predefined functional roles.
+2. **Custom YAML role + 30-day expiry for the agent SA.** Diff-reviewable;
+   forces graceful credential rotation.
+3. **Stepwise checkpoint invalidates on step-list-hash mismatch.** A change
+   to the step list silently invalidates stale checkpoints — restart from
+   step 1. Step idempotency is a contract; restart is always safe.
+4. **`format=full` on identity-token metadata fetch.** See `skills/gcloud-ops`.
+5. **Operator CLI conventions baked in.** Default `cargo run --release`;
+   distinct bin names across sibling crates; Makefile is the operator
+   interface — never invoke scripts directly.
+6. **Role-aware CLI vocabulary.** `admin-cloud-init` / `cloud-preflight` /
+   `cloud-infra` / `cloud-app-deploy` etc., not `init` / `cloud-init` /
+   `init-prod` (which described the operation, not the role).
+
 ## Agent Integration
 
 - Terraform runs via Cloud Build, not locally. Cloud Build is the execution
   environment for all infrastructure changes.
 - Cloud Build configs and Terraform modules live in `cicd/`.
+- The custom deployer role YAML lives in `cicd/iam/`.
 - NEVER run `terraform apply` or `terraform destroy` without first showing
   the plan output and getting user confirmation.
 - NEVER submit Cloud Build jobs that run `terraform apply` without user
   confirmation.
 - ALWAYS show plan output before any apply operation.
+- ALWAYS use `make <target>` instead of `bash scripts/cloud.sh ...` —
+  the wrappers engage trap handlers + heartbeat/checkpoint machinery
+  that catches operator shell disconnects (per issue #140).
