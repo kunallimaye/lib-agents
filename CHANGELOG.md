@@ -143,6 +143,24 @@ script.
   globals and intentional single-iteration loops carry documented
   per-line suppressions. See PR for full violation-count breakdown.
 
+### Fixed
+
+- **`fix(install):`** refuse the `--link` + `--profile` (and
+  `--link` + `--all`) combination at argument-parsing time
+  ([#161](https://github.com/kunallimaye/lib-agents/issues/161)).
+  Previously these combinations were silent footguns: `--link`
+  installs agent.md files as symlinks back into the source repo, and
+  profile-skill injection then wrote THROUGH the symlinks, corrupting
+  the canonical `agents/*/agent.md` files in the lib-agents source
+  tree. The installer now exits 2 with a clear error and a
+  pick-one-of-these table. This is approach (b) — refuse the
+  combination — from the issue; a symlink-resolution / replace-with-real
+  approach (a) is deferred. The PR does not repair any
+  previously-corrupted source files; it only prevents new corruption.
+  A `SYMLINK HAZARD` block comment above `inject_profile_skills` in
+  `install/lib-profiles.sh` documents the invariant for future
+  maintainers.
+
 ### Motivating downstream failures
 
 Both issues were driven by real production incidents in downstream

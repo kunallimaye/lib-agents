@@ -225,6 +225,34 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+# Refuse --link + --profile (and --link + --all, since --all is shorthand
+# for --profile default). Profile-skill injection writes through to the
+# installed agent.md file; with --link, that destination is a symlink
+# back into the source repo, so the write corrupts the canonical
+# lib-agents source tree. See issue #161 and the SYMLINK HAZARD comment
+# above inject_profile_skills() in install/lib-profiles.sh.
+#
+# This guard MUST run before any install action (ensure_agents_source,
+# install_shared_resources, install_agent) -- by the time injection
+# runs, the symlinks already point into the source tree.
+if [ "$USE_LINK" = "link" ] && { [ -n "$PROFILE_ARG" ] || [ "$INSTALL_ALL" = true ]; }; then
+  err ""
+  err "Cannot combine --link with --profile (or --all)."
+  err ""
+  err "Reason: profile-skill injection writes to the installed agent.md"
+  err "files. With --link, those destinations are symlinks back into the"
+  err "lib-agents source repo, so the writes go THROUGH the symlinks and"
+  err "corrupt the canonical source tree (issue #161)."
+  err ""
+  err "Pick one:"
+  err "  --link alone                       development, no profile customization"
+  err "  --profile NAME --project           real-copy install with profile (recommended)"
+  err "  --profile NAME --global            same, installed globally"
+  err "  --all --project                    real-copy install with default profile"
+  err ""
+  exit 2
+fi
+
 echo ""
 echo "========================================="
 echo "  lib-agents installer"
