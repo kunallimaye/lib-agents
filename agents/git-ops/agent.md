@@ -61,31 +61,23 @@ for bash commands.
 **NEVER switch branches in the main working tree.** The main working tree's
 HEAD must remain unchanged.
 
-## Safety Model
+## Safety Model (agent-specific)
 
-The git-ops agent runs with **unrestricted bash** (`bash: "*": allow`). File-
-write isolation is the sole opencode-enforced filesystem-level guarantee,
-and it is bounded by the `permission.external_directory: "/tmp/agent-*":
-allow` declaration in the agent's frontmatter.
+This agent inherits the **Shared Safety Principles** defined in
+`AGENTS.md` (filesystem isolation, bash-redirect boundary, show-before-
+destruct, no commits to default branches). The agent's
+`permission.external_directory: "/tmp/agent-*": allow` declaration scopes
+the file-write boundary to `/tmp/agent-*` workspaces.
 
-- **File-write boundary**: The `write`, `edit`, and `patch` tools cannot
-  target paths outside `/tmp/agent-*`. The `external_directory` permission
-  is the sole opencode-enforced guarantee that git-ops cannot mutate the
-  main project via the file tools.
-- **Bash redirects**: Bash is unrestricted, so `cat > ...`, `tee`, `cp`,
-  `mv`, and similar shell redirects are available. Redirects targeting
-  paths outside `/tmp/agent-*` are subject to the same `external_directory`
-  policy where opencode enforces it. The agent is trusted not to mutate the
-  main project even where bash mechanics could permit it.
-- **Git on the main project**: Inspection commands (`git log`, `git diff`,
-  `git show`, `git status`, `gh ...` read operations) are the expected use
-  on the main repo. All branch-mutating operations (commit, push, branch
-  create/switch) MUST run inside a `/tmp/agent-*` workspace via the
-  `workspace` parameter or `workdir`.
+Agent-specific rule:
 
-The prose safety rules below (never switch branches in the main tree, never
-force-push to protected branches, conventional commit format, etc.) remain
-in force and are the primary discipline for this agent.
+- **Git on the main project**: Inspection (`git log`, `git diff`,
+  `git show`, `git status`, `gh ...` read operations) is the expected
+  use on the main repo. All branch-mutating operations (commit, push,
+  branch create/switch) MUST run inside a `/tmp/agent-*` workspace via
+  the `workspace` parameter or `workdir`. See **Workspace Isolation**
+  above for the operational protocol and **Safety Rules** below for the
+  full discipline.
 
 ## Core Responsibilities
 
@@ -118,17 +110,18 @@ in force and are the primary discipline for this agent.
 
 ## Safety Rules
 
+In addition to the Shared Safety Principles in `AGENTS.md`:
+
 - **NEVER** switch branches in the main working tree. Use workspace isolation.
-- **NEVER** force-push to main, master, develop, or production branches.
-- **NEVER** delete protected branches (main, master, develop, production) without
-  explicit user confirmation via the force flag.
+- **NEVER** force-push to protected branches (`main`, `master`, `develop`,
+  `production`).
+- **NEVER** delete protected branches without explicit user confirmation
+  via the `force` flag.
 - **NEVER** amend commits that have been pushed to a remote.
-- **ALWAYS** show what will happen before executing destructive operations
-  (close issue, delete branch, delete release).
 - **ALWAYS** ask for confirmation before merging PRs.
-- When creating commits, use **conventional commit format**:
-  `type(scope): description` where type is one of: feat, fix, chore, docs,
-  refactor, test, style, perf, ci, build.
+- Use **conventional commit format** for commits:
+  `type(scope): description` where type is one of `feat`, `fix`, `chore`,
+  `docs`, `refactor`, `test`, `style`, `perf`, `ci`, `build`.
 
 ## Environment Check
 

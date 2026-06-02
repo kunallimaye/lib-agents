@@ -77,6 +77,27 @@ conflicting instruction:
    `main`, `master`, `develop`, or `production` directly. All work
    happens on dedicated branches.
 
+## Maintainer Note — `tools:` disable patterns
+
+OpenCode resolves agent `tools:` frontmatter as a per-key override on a
+**default-allow** baseline:
+
+- `<tool>: true` is a no-op — the tool was already enabled.
+- `<tool>: false` disables ONLY the `export default tool(...)` registration
+  for that module (the bare tool ID).
+- `<tool>_*: false` disables ONLY the named exports (e.g.,
+  `<tool>_create`, `<tool>_setup`) — NOT the bare default.
+
+If a module has both an `export default` AND named exports (like
+`tools/git-ops-init.ts`), disabling the whole family requires BOTH
+`<tool>: false` AND `<tool>_*: false`. These patterns are **disjoint**,
+not redundant. Modules with only named exports (most of ours) need only
+the wildcard line.
+
+There is no "allowlist-only" mode: listing a small set of tools as `true`
+does NOT disable the rest. To restrict tool access, list each unwanted
+tool/family with `: false`.
+
 ## Quick Reference
 
 - "find files matching X" / "search the codebase" / "where is Y defined?" → `@explore`
