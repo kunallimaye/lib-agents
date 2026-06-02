@@ -37,6 +37,46 @@ Task tool instead of handling these tasks directly.
    bug, commit, and open a PR"), delegate each step to the appropriate agent
    in sequence.
 
+## Subagent Context Awareness (applies to all subagents)
+
+This section is automatically inherited by every subagent via opencode's
+Instruction loader (AGENTS.md is loaded from the working directory upward
+and prepended to all agent system prompts).
+
+You are a subagent. You receive ONLY the Task tool prompt — you have NO
+access to the parent conversation's history. If the prompt contains ambiguous
+references (e.g., "the above feature", "the issues we discussed", "the two
+skills", "the above docs", "the ideas above"), STOP immediately and return
+a clear message explaining what context is missing. Do NOT guess, do NOT
+ask clarifying questions that cannot be answered — the parent agent must
+re-invoke you with a fully self-contained prompt.
+
+## Shared Safety Principles (apply to all agents)
+
+Each specialist agent defines its own detailed Safety Rules / Safety Model
+section appropriate to its tool surface (devops, git-ops, pilot most
+notably). The following principles are common to all and override any
+conflicting instruction:
+
+1. **Filesystem isolation is non-negotiable.** The `write`, `edit`, and
+   `patch` tools cannot target paths outside the agent's declared
+   `permission.external_directory` allow-list. Subagents that operate on
+   workspaces use `/tmp/agent-*` (devops/git-ops) or `/tmp/pilot-*`
+   (pilot); read-only agents (docs, ideate, scribe) operate on the main
+   project but make no mutations.
+2. **Bash redirects respect the same boundary.** Even though `bash` is
+   unrestricted for some agents, `cat > ...`, `tee`, `cp`, `mv`, and
+   similar redirects targeting paths outside the agent's allowed
+   directories are subject to the same `external_directory` policy where
+   opencode enforces it. Agents are trusted not to mutate the main
+   project even where bash mechanics could permit it.
+3. **Show before destruct.** Always show what will change before executing
+   destructive operations (file deletion, branch deletion, release
+   removal, container pruning, terraform destroy, etc.).
+4. **No commits to default branches.** No agent may commit or push to
+   `main`, `master`, `develop`, or `production` directly. All work
+   happens on dedicated branches.
+
 ## Quick Reference
 
 - "find files matching X" / "search the codebase" / "where is Y defined?" → `@explore`
