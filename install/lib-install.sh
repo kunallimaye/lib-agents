@@ -31,6 +31,7 @@ ensure_agents_source() {
   fi
   AGENTS_DIR="${TEMP_DIR}/agents"
   REPO_ROOT="${TEMP_DIR}"
+  # shellcheck disable=SC2034  # Consumed by lib-manifest.sh write_manifest()
   SOURCE_COMMIT=$(git -C "${TEMP_DIR}" rev-parse HEAD 2>/dev/null || echo "unknown")
   ok "Downloaded agent definitions to temp directory"
   echo ""
@@ -215,7 +216,8 @@ install_shared_resources() {
   if [ -d "${REPO_ROOT}/tools" ]; then
     for tool_file in "${REPO_ROOT}/tools"/*.ts; do
       if [ -f "$tool_file" ]; then
-        local tool_name=$(basename "$tool_file")
+        local tool_name
+        tool_name=$(basename "$tool_file")
         local tool_dest="${target}/tools/${tool_name}"
         if [ "$use_link" = true ]; then
           ln -sf "$(realpath "$tool_file")" "$tool_dest"
@@ -233,7 +235,8 @@ install_shared_resources() {
   if [ -d "${REPO_ROOT}/commands" ]; then
     for cmd_file in "${REPO_ROOT}/commands"/*.md; do
       if [ -f "$cmd_file" ]; then
-        local cmd_name=$(basename "$cmd_file")
+        local cmd_name
+        cmd_name=$(basename "$cmd_file")
         local cmd_dest="${target}/commands/${cmd_name}"
         if [ "$use_link" = true ]; then
           ln -sf "$(realpath "$cmd_file")" "$cmd_dest"
@@ -274,7 +277,8 @@ install_shared_resources() {
       # No profile: install ALL skills
       for skill_dir in "${REPO_ROOT}/skills"/*/; do
         if [ -d "$skill_dir" ] && [ -f "${skill_dir}/SKILL.md" ]; then
-          local skill_name=$(basename "$skill_dir")
+          local skill_name
+          skill_name=$(basename "$skill_dir")
           local skill_dest_dir="${target}/skills/${skill_name}"
           mkdir -p "$skill_dest_dir"
           if [ "$use_link" = true ]; then
@@ -295,7 +299,8 @@ install_shared_resources() {
     mkdir -p "${target}/prompts"
     for prompt_file in "${REPO_ROOT}/prompts"/*.md; do
       if [ -f "$prompt_file" ]; then
-        local prompt_name=$(basename "$prompt_file")
+        local prompt_name
+        prompt_name=$(basename "$prompt_file")
         local prompt_dest="${target}/prompts/${prompt_name}"
         if [ "$use_link" = true ]; then
           ln -sf "$(realpath "$prompt_file")" "$prompt_dest"
@@ -429,6 +434,10 @@ install_agent() {
     project_root="${HOME}/.config/opencode"
   fi
 
+  # Single-element list today; extension point for future root-level
+  # user files (e.g. AGENTS.local.md). See also lib-manifest.sh,
+  # lib-update.sh.
+  # shellcheck disable=SC2043  # Intentional single-iteration list for forward extensibility
   for root_file in AGENTS.md; do
     if [ -f "${REPO_ROOT}/${root_file}" ]; then
       local root_dest="${project_root}/${root_file}"
@@ -461,8 +470,9 @@ install_agent() {
   if [ -d "${REPO_ROOT}/commands" ]; then
     for cmd_file in "${REPO_ROOT}/commands"/*.md; do
       if [ -f "$cmd_file" ]; then
-        local cmd_name=$(basename "$cmd_file" .md)
-        local cmd_desc=$(grep "^description:" "$cmd_file" | head -1 | sed 's/^description:\s*//')
+        local cmd_name cmd_desc
+        cmd_name=$(basename "$cmd_file" .md)
+        cmd_desc=$(grep "^description:" "$cmd_file" | head -1 | sed 's/^description:\s*//')
         echo "    /${cmd_name}$(printf '%*s' $((16 - ${#cmd_name})) '')- ${cmd_desc}"
       fi
     done

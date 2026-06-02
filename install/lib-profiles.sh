@@ -111,6 +111,7 @@ parse_profile() {
         if [[ "$line" =~ ^name:\ *(.*) ]]; then
           PROFILE_NAME="${BASH_REMATCH[1]}"
         elif [[ "$line" =~ ^description:\ *(.*) ]]; then
+          # shellcheck disable=SC2034  # Parsed for future profile-listing UX; currently no reader. Keep the parse so adding a reader is a one-line change.
           PROFILE_DESCRIPTION="${BASH_REMATCH[1]}"
         elif [[ "$line" == "agents:" ]]; then
           current_section="agents"
@@ -166,7 +167,9 @@ parse_profile() {
   done
 
   # Sort for deterministic output
-  IFS=$'\n' PROFILE_ALL_SKILLS=($(sort <<<"${PROFILE_ALL_SKILLS[*]}")); unset IFS
+  if [ "${#PROFILE_ALL_SKILLS[@]}" -gt 0 ]; then
+    mapfile -t PROFILE_ALL_SKILLS < <(printf '%s\n' "${PROFILE_ALL_SKILLS[@]}" | sort)
+  fi
 }
 
 # Validate that all agents and skills referenced in the profile exist
@@ -295,7 +298,6 @@ inject_profile_skills() {
   local injected=false
   local in_fm=false
   local in_sk=false
-  local last_skill_line=""
 
   # Strategy: find the last "allow" or "deny" line in the skill: section,
   # and insert new entries after it
@@ -320,7 +322,9 @@ inject_profile_skills() {
 
     if [ "$in_sk" = true ]; then
       if [[ "$line" =~ ^[[:space:]]{4}[a-z\"*] ]]; then
-        last_skill_line="$line"
+        # Still inside the skill: section; keep scanning. (Previously
+        # captured the line into `last_skill_line`, but nothing read it.)
+        :
       else
         if [[ ! "$line" =~ ^[[:space:]]*$ ]]; then
           # We've left the skill section — inject before this line
@@ -454,7 +458,10 @@ apply_prompt_overlays() {
   local profile_dir="$2"
   local profile_name="$3"
 
-  # plan.md was removed in PR #152 (orphan at runtime); only build remains
+  # plan.md was removed in PR #152 (orphan at runtime); only build remains.
+  # Loop kept (vs collapsing to a single block) as an extension point for
+  # future overlayable prompt files.
+  # shellcheck disable=SC2043  # Intentional single-iteration list for forward extensibility
   for prompt_name in build; do
     local overlay="${profile_dir}/prompts/${prompt_name}.md"
     local dest="${target}/prompts/${prompt_name}.md"

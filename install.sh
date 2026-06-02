@@ -50,7 +50,9 @@ else
 fi
 AGENTS_DIR="${SCRIPT_DIR:+${SCRIPT_DIR}/agents}"
 REPO_ROOT="${SCRIPT_DIR}"
+# shellcheck disable=SC2034  # SHARED_RESOURCES_INSTALLED consumed by install/lib-install.sh install_shared_resources()
 SHARED_RESOURCES_INSTALLED=false
+# shellcheck disable=SC2034  # SOURCE_COMMIT consumed by install/lib-manifest.sh write_manifest()
 SOURCE_COMMIT=""
 
 # Profile state
@@ -58,6 +60,7 @@ PROFILE_NAME=""
 declare -a PROFILE_AGENTS=()
 declare -A PROFILE_AGENT_SKILLS=()   # agent -> space-separated skill list
 declare -a PROFILE_ALL_SKILLS=()     # UNION of all agent_skills values
+# shellcheck disable=SC2034  # PROFILE_DESCRIPTION parsed by install/lib-profiles.sh; reader not yet wired up. Keep so adding a list-profiles consumer is a one-line change.
 PROFILE_DESCRIPTION=""
 
 # Manifest state (populated by lib-manifest.sh functions)
@@ -295,9 +298,14 @@ if [ "$DO_UPDATE" = true ]; then
       rm -rf "${local_target}/skills"
     fi
 
-    # Reset shared resources flag to force reinstall
+    # Reset shared resources flag to force reinstall. All three are
+    # cross-module globals (lib-install.sh, lib-manifest.sh, lib-update.sh)
+    # which shellcheck cannot see when scanning install.sh in isolation.
+    # shellcheck disable=SC2034  # SHARED_RESOURCES_INSTALLED consumed by lib-install.sh
     SHARED_RESOURCES_INSTALLED=false
+    # shellcheck disable=SC2034  # MANIFEST_ENTRIES consumed by lib-manifest.sh, lib-update.sh
     MANIFEST_ENTRIES=()
+    # shellcheck disable=SC2034  # INSTALLED_AGENTS_LIST consumed by lib-manifest.sh, lib-update.sh
     INSTALLED_AGENTS_LIST=()
 
     # Install agents from profile

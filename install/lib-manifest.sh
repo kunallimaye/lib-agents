@@ -123,7 +123,12 @@ write_manifest() {
   ok "Manifest written to ${manifest_path}"
 }
 
-# Read an existing manifest into associative arrays
+# Read an existing manifest into associative arrays.
+# All MANIFEST_* globals below are populated by read_manifest() and
+# consumed by lib-status.sh (display) and lib-update.sh (diffing).
+# They are declared at file scope so re-sourcing is a no-op; assignments
+# happen inside read_manifest(). They are not `export`ed to child
+# processes -- they are shell-scope globals only.
 # Sets: MANIFEST_HASHES[path]=hash, MANIFEST_TIERS[path]=tier, MANIFEST_COMMIT, MANIFEST_URL, MANIFEST_AT, MANIFEST_AGENTS_CSV, MANIFEST_MODE
 declare -A MANIFEST_HASHES=()
 declare -A MANIFEST_TIERS=()
@@ -154,7 +159,10 @@ read_manifest() {
     [[ -z "$line" ]] && continue
     [[ "$line" == \#* ]] && continue
 
-    # Parse header fields
+    # Parse header fields. All MANIFEST_* assignments below are file-scope
+    # globals consumed by lib-status.sh and lib-update.sh after this file
+    # is sourced; shellcheck cannot see cross-file usage.
+    # shellcheck disable=SC2034  # MANIFEST_* are cross-module globals (see header comment)
     case "$line" in
       source_commit=*)
         MANIFEST_COMMIT="${line#source_commit=}"
@@ -242,7 +250,9 @@ generate_manifest_for_existing() {
     done
   fi
 
-  # Scan user-tier root files
+  # Scan user-tier root files. Single-element list today; extension
+  # point for future root-level user files (e.g. AGENTS.local.md).
+  # shellcheck disable=SC2043  # Intentional single-iteration list for forward extensibility
   for root_file in AGENTS.md; do
     if [ -f "${project_root}/${root_file}" ]; then
       record_file "${project_root}/${root_file}" "user"
