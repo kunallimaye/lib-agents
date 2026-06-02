@@ -63,6 +63,11 @@ Invoke the agent directly in the OpenCode TUI:
 | `/review 42` | Review PR #42's code changes |
 | `/release` | Create a release with auto-generated notes |
 | `/git-status` | Comprehensive repository status overview |
+| `/git-local-sync` | Fast-forward the local default branch to match `origin` |
+
+Both `/git-status` and `/git-local-sync` are marked `subtask: true`, so
+they don't appear in the top-level slash menu. Invoke them by name
+when you need them.
 
 ### Skills
 
