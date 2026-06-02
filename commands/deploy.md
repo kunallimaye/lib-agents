@@ -13,11 +13,20 @@ This is a deployment workflow. After pre-flight passes, check if a Makefile
 exists:
 
 **If Makefile exists with standard targets:**
-Use `make` targets for the deployment:
+Use `make` targets for the deployment. Post-#142 the cloud verbs are
+split into developer-tier (Terraform infra + app lifecycle) and owner-tier
+(project bootstrap):
+
 - Container build: `make container-build`
 - Container run: `make container-run`
-- Cloud build: `make cloud-build`
-- Cloud deploy: `make cloud-deploy`
+- Cloud preflight (audit auth/quota/config): `make cloud-preflight`
+- Cloud infra (Terraform plan + apply via Cloud Build): `make cloud-infra`
+- Cloud app deploy (image build + Cloud Run revision swap): `make cloud-app-deploy`
+- Cloud app promote (semver-tagged promotion): `make cloud-app-promote`
+- Cloud app undeploy (revert/rollback active revision): `make cloud-app-undeploy`
+- Admin cloud init (owner-only project bootstrap): `make admin-cloud-init`
+- Admin cloud destroy (owner-only teardown): `make admin-cloud-destroy`
+- Cloud clean (remove generated cloud artifacts locally): `make cloud-clean`
 
 **If no Makefile exists:**
 Offer to scaffold one first using the scaffold tool, then use the targets.
