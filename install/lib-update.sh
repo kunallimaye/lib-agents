@@ -61,7 +61,9 @@ prune_backups() {
   done
 
   # Sort by name (timestamps sort lexicographically)
-  IFS=$'\n' backups=($(sort <<<"${backups[*]}")); unset IFS
+  if [ "${#backups[@]}" -gt 0 ]; then
+    mapfile -t backups < <(printf '%s\n' "${backups[@]}" | sort)
+  fi
 
   local count=${#backups[@]}
   if [ "$count" -gt "$keep" ]; then
@@ -158,7 +160,8 @@ update_installation() {
     if [ -d "${REPO_ROOT}/tools" ]; then
       for f in "${REPO_ROOT}/tools"/*.ts; do
         [ -f "$f" ] || continue
-        local dest="${target}/tools/$(basename "$f")"
+        local dest
+        dest="${target}/tools/$(basename "$f")"
         NEW_FILES["$dest"]="$f"
         NEW_TIERS["$dest"]="shared"
         NEW_HASHES["$dest"]=$(compute_hash "$f")
@@ -171,7 +174,8 @@ update_installation() {
     if [ -d "${REPO_ROOT}/commands" ]; then
       for f in "${REPO_ROOT}/commands"/*.md; do
         [ -f "$f" ] || continue
-        local dest="${target}/commands/$(basename "$f")"
+        local dest
+        dest="${target}/commands/$(basename "$f")"
         NEW_FILES["$dest"]="$f"
         NEW_TIERS["$dest"]="shared"
         NEW_HASHES["$dest"]=$(compute_hash "$f")
@@ -201,7 +205,8 @@ update_installation() {
     if [ -d "${REPO_ROOT}/prompts" ]; then
       for f in "${REPO_ROOT}/prompts"/*.md; do
         [ -f "$f" ] || continue
-        local dest="${target}/prompts/$(basename "$f")"
+        local dest
+        dest="${target}/prompts/$(basename "$f")"
         NEW_FILES["$dest"]="$f"
         NEW_TIERS["$dest"]="shared"
         NEW_HASHES["$dest"]=$(compute_hash "$f")
@@ -232,6 +237,10 @@ update_installation() {
 
   # Scan new source: root config files (user tier)
   if should_include_type "configs" "$only_filter"; then
+    # Single-element list today; extension point for future root-level
+    # user files (e.g. AGENTS.local.md). See also lib-install.sh,
+    # lib-manifest.sh.
+    # shellcheck disable=SC2043  # Intentional single-iteration list for forward extensibility
     for root_file in AGENTS.md; do
       if [ -f "${REPO_ROOT}/${root_file}" ]; then
         local dest="${project_root}/${root_file}"

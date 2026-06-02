@@ -64,7 +64,9 @@ show_status() {
   for path in "${!MANIFEST_HASHES[@]}"; do
     sorted_paths+=("$path")
   done
-  IFS=$'\n' sorted_paths=($(sort <<<"${sorted_paths[*]}")); unset IFS
+  if [ "${#sorted_paths[@]}" -gt 0 ]; then
+    mapfile -t sorted_paths < <(printf '%s\n' "${sorted_paths[@]}" | sort)
+  fi
 
   for path in "${sorted_paths[@]}"; do
     local stored_hash="${MANIFEST_HASHES[$path]}"

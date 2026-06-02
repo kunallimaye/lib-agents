@@ -57,3 +57,20 @@ jobs:
             exit 1
           fi
           echo "OK: no broken opencode file directives in tracked config files."
+
+  shellcheck:
+    name: shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run shellcheck
+        # Pinned to v2.0.0 (latest stable as of 2026-06) to avoid
+        # supply-chain risk from a moving `master` ref. Bump deliberately.
+        # Scope: all tracked .sh files (install.sh + install/lib-*.sh).
+        # Severity: warning (warnings + errors fail; info-level does not).
+        # Tighten to -S info in a follow-up once any backlog is cleared.
+        uses: ludeeus/action-shellcheck@2.0.0
+        env:
+          SHELLCHECK_OPTS: -S warning

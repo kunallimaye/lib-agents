@@ -133,6 +133,16 @@ script.
 - `time_sleep.wait_for_iam` (see BREAKING).
 - The pre-#141 menu wording in `commands/scaffold.md`.
 
+### Tooling
+
+- **`chore(ci):`** added a `shellcheck` job to the `repo-hygiene`
+  workflow ([#160](https://github.com/kunallimaye/lib-agents/issues/160)).
+  Scans `install.sh` and `install/lib-*.sh` at severity `warning` using
+  `ludeeus/action-shellcheck@2.0.0` (tag-pinned). Existing violations
+  fixed inline (SC2155, SC2207, one dead assignment); 17 cross-module
+  globals and intentional single-iteration loops carry documented
+  per-line suppressions. See PR for full violation-count breakdown.
+
 ### Motivating downstream failures
 
 Both issues were driven by real production incidents in downstream
