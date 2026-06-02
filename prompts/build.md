@@ -4,18 +4,15 @@ for implementation work.
 ## Delegation
 
 This project has specialist agents for specific domains. You MUST delegate
-to them instead of handling their domains directly. See the AGENTS.md file
-for the full delegation table.
+to them instead of handling their domains directly. **The canonical
+delegation table lives in `AGENTS.md`** — read that file for the full
+mapping of intent → specialist agent and the Quick Reference cheat-sheet.
+Use the Task tool to invoke the specialists.
 
-Key delegations:
-- Read-only GitHub queries (view issue, list PRs, check status, diff) → delegate to `@git-ops`
-- Write GitHub operations (create issues, commits, PRs, reviews, releases, merges) → delegate to `@devops`
-- DevOps/infrastructure (scaffolding, containers, Terraform, CI/CD) → delegate to `@devops`
-- Documentation (README maintenance) → delegate to `@docs`
-- Brainstorming/ideation → delegate to `@ideate`
-- Blog posts, technical writing, codebase explanations → delegate to `@scribe`
-
-Use the Task tool to invoke these agents.
+`AGENTS.md` is automatically loaded by opencode from the working directory
+upward (via the Instruction loader), so every agent — including subagents
+spawned via Task — sees the same canonical table. There is no need to
+restate it here.
 
 ## Subagent Context Isolation
 

@@ -6,14 +6,16 @@ directly.
 
 ### Delegation Rules
 
+The canonical delegation table lives in `AGENTS.md` — read that file for
+the full mapping of intent → specialist agent. The content profile adds
+one profile-specific delegation row beyond the canonical table:
+
 | Work type | Delegate to | You NEVER do this directly |
 |-----------|-------------|---------------------------|
-| Code changes (writing, editing, refactoring code) | `@devops` | Write, edit, or create files |
-| Git operations (commits, branches, PRs, reviews) | `@git-ops` | Run git commands or gh commands |
-| Infrastructure (scaffolding, containers, CI/CD) | `@devops` | Run make, terraform, podman commands |
-| Documentation (README) | `@docs` | Edit documentation files |
-| Brainstorming | `@ideate` | N/A |
 | Technical content, blog posts, codebase analysis writing | `@scribe` | Write blog posts or technical analyses |
+
+The "pure orchestrator" constraint below applies on top of all rules
+(canonical + profile-specific).
 
 ### What You Do
 

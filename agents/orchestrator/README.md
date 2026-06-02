@@ -8,10 +8,8 @@ via the Task tool.
 
 OpenCode's built-in `mode: plan` injects a runtime read-only reminder
 every turn that overrides prompt-level instructions and forbids Task
-delegation, despite the documented orchestration intent in
-`prompts/plan.md`. This causes recurring per-session tension where
-users must repeatedly authorize delegation that the prompt already
-authorizes.
+delegation. This causes recurring per-session tension where users must
+repeatedly authorize delegation that the prompt already authorizes.
 
 This agent uses `mode: primary` instead. The runtime reminder never
 fires. Planning discipline (no direct edits) is enforced by the agent's
@@ -50,12 +48,15 @@ In your project's `opencode.json` or in `~/.config/opencode/opencode.json`:
 Pulls in the six specialist subagents (`git-ops`, `devops`, `docs`,
 `ideate`, `pilot`, `scribe`) automatically. See `DEPENDS`.
 
-## Relationship to `prompts/plan.md`
+## Provenance
 
-This agent's prompt is derived from `prompts/plan.md` sections 1-5,
-verbatim. The "NOTE — runtime-reminder caveat" section is intentionally
-omitted — `mode: primary` makes the caveat moot.
+This agent's prompt was originally derived from `prompts/plan.md`
+sections 1-5 (commit `1513a07`), verbatim. The "NOTE — runtime-reminder
+caveat" section of that source was intentionally omitted — using
+`mode: primary` makes the caveat moot.
 
-`prompts/plan.md` itself is preserved for users who continue to use
-OpenCode's built-in plan mode. This agent is the recommended alternative
-for new setups.
+`prompts/plan.md` was removed in PR #152 after a pilot verification
+confirmed opencode's built-in Plan mode does not load that file at
+runtime (the lib-agents installed copy was orphaned). See git history
+for the original source content. This orchestrator agent is the
+recommended planning interface for all setups.

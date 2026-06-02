@@ -498,7 +498,8 @@ apply_prompt_overlays() {
   local profile_dir="$2"
   local profile_name="$3"
 
-  for prompt_name in build plan; do
+  # plan.md was removed in PR #152 (orphan at runtime); only build remains
+  for prompt_name in build; do
     local overlay="${profile_dir}/prompts/${prompt_name}.md"
     local dest="${target}/prompts/${prompt_name}.md"
 
