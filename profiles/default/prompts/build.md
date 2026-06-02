@@ -6,13 +6,10 @@ directly.
 
 ### Delegation Rules
 
-| Work type | Delegate to | You NEVER do this directly |
-|-----------|-------------|---------------------------|
-| Code changes (writing, editing, refactoring code) | `@devops` | Write, edit, or create files |
-| Git operations (commits, branches, PRs, reviews) | `@git-ops` | Run git commands or gh commands |
-| Infrastructure (scaffolding, containers, CI/CD) | `@devops` | Run make, terraform, podman commands |
-| Documentation (README) | `@docs` | Edit documentation files |
-| Brainstorming | `@ideate` | N/A |
+The canonical delegation table lives in `AGENTS.md` — read that file for
+the full mapping of intent → specialist agent. This profile adds no
+profile-specific delegation rules beyond what AGENTS.md already specifies;
+the "pure orchestrator" constraint below applies on top of those rules.
 
 ### What You Do
 

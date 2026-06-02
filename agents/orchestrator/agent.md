@@ -229,7 +229,10 @@ invocations and pass each subagent the exact slice of the plan it owns.
 
 ## Source
 
-This agent's prompt is derived from `prompts/plan.md` sections 1-5
-(commit `1513a07`). The "NOTE — runtime-reminder caveat" section of
-that source is intentionally omitted — using `mode: primary` instead
-of `mode: plan` makes the caveat moot.
+This agent's prompt was originally derived from `prompts/plan.md`
+sections 1-5 (commit `1513a07`). The "NOTE — runtime-reminder caveat"
+section of that source was intentionally omitted — using `mode: primary`
+instead of `mode: plan` made the caveat moot. `prompts/plan.md` was
+removed in PR #152 (refactor: retire orphan `prompts/plan.md`) after a
+pilot verification confirmed opencode's built-in Plan mode does not load
+that file at runtime; see git history for the original source content.
