@@ -229,8 +229,23 @@ get_skill_description() {
   fi
 }
 
-# Inject profile skills into an installed agent.md
-# Adds permission.skill entries and appends Profile Skills section
+# inject_profile_skills -- inject profile-specific skill allow-entries
+# into the installed agent.md file's frontmatter, and append a "Profile
+# Skills" section to the body.
+#
+# SYMLINK HAZARD: This function WRITES to the destination agent.md.
+# When install.sh is invoked with --link, the destination is a symlink
+# back into the source repo, and the write goes THROUGH the symlink,
+# corrupting the canonical lib-agents source tree (issue #161).
+#
+# The --link + --profile combination is refused at argument-parsing
+# time in install.sh (search for "Cannot combine --link with --profile").
+# If you are tempted to relax that guard, you MUST first switch this
+# function to detect symlinked destinations and replace them with real
+# copies before writing -- otherwise you reintroduce the bug filed as
+# #161.
+#
+# Adds permission.skill entries and appends Profile Skills section.
 inject_profile_skills() {
   local agent_md="$1"
   local agent_name="$2"
