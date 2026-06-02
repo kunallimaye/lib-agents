@@ -24,8 +24,20 @@ project's development workflow.
 |--------|------|-------|-------|------------|------|------|
 | **Local dev** | `local-init` | `local-clean` | `local-build` | `local-run` | `local-test` | `local-lint` |
 | **Container dev** | `container-init` | `container-clean` | `container-build` | `container-run` | — | — |
-| **Cloud runtime** | `cloud-init` | `cloud-clean` | `cloud-build` | `cloud-deploy` | — | — |
+| **Cloud runtime** | `admin-cloud-init` † | `cloud-clean` | `cloud-infra` | `cloud-app-deploy` | `cloud-preflight` | — |
 | **Logs** | — | `logs-clean` | — | — | — | `logs-list` / `logs-last` |
+
+† Cloud runtime adds **admin-tier** and **app lifecycle** verbs beyond the
+standard table (post-#142):
+
+- `admin-cloud-init` — owner-only project bootstrap (APIs, service accounts,
+  IAM bindings, state buckets); requires Owner role.
+- `admin-cloud-destroy` — owner-only teardown of admin-managed resources.
+- `cloud-infra` — Terraform plan + apply via Cloud Build (developer-tier).
+- `cloud-app-deploy` — image build + Cloud Run revision swap.
+- `cloud-app-promote` — semver-tagged promotion of a tested revision.
+- `cloud-app-undeploy` — revert/rollback the active revision.
+- `cloud-preflight` — pre-deploy audit (auth, quota, config, IAM checks).
 
 ### Thin-wrapper Pattern
 
@@ -171,7 +183,7 @@ target execution generates a timestamped log file in `logs/`:
 ```
 logs/20260307-143022-local-build.log
 logs/20260307-143155-container-run.log
-logs/20260307-150000-cloud-deploy.log
+logs/20260307-150000-cloud-app-deploy.log
 ```
 
 These log files capture all stdout and stderr output from the command,

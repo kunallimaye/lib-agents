@@ -37,7 +37,8 @@ All operational tasks go through Makefile targets. The Makefile is a thin wrappe
 |--------|---------|--------|
 | Local dev | `local-init`, `local-clean`, `local-build`, `local-run` | `scripts/local.sh` |
 | Container dev | `container-init`, `container-clean`, `container-build`, `container-run` | `scripts/container.sh` |
-| Cloud runtime | `cloud-init`, `cloud-build`, `cloud-deploy`, `cloud-clean` | `scripts/cloud.sh` |
+| Cloud runtime (developer) | `cloud-preflight`, `cloud-infra`, `cloud-app-deploy`, `cloud-app-promote`, `cloud-app-undeploy`, `cloud-clean` | `scripts/cloud.sh` |
+| Cloud runtime (owner) | `admin-cloud-init`, `admin-cloud-destroy` | `scripts/cloud.sh` |
 
 ### Scaffolded Project Structure
 
