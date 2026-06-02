@@ -3,7 +3,7 @@ import { tool } from "@opencode-ai/plugin"
 const WORKSPACE_DESC =
   "Path to an agent workspace (clone). When provided, git commands run " +
   "inside the workspace instead of the main working tree. Use the path " +
-  "returned by agent_workspace_create."
+  "returned by agent-workspace_create."
 
 async function run(
   cmd: string[],

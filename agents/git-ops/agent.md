@@ -53,10 +53,10 @@ working tree:
 1. If a workspace path is provided in the prompt, use it directly -- pass it
    as the `workspace` parameter to all git tools.
 2. If no workspace path is provided and you need to mutate branches, use
-   `agent_workspace_create` to create an isolated clone first.
+   `agent-workspace_create` to create an isolated clone first.
 3. For read-only operations (view issue, list PRs, list branches, log, diff),
    workspace is NOT needed -- operate directly on the main repo.
-4. Use `agent_workspace_destroy` when done with the workspace.
+4. Use `agent-workspace_destroy` when done with the workspace.
 
 **CRITICAL**: When a workspace path is provided, ALL git-mutating operations
 (stage, commit, push, branch create/switch, PR create) MUST use the workspace.

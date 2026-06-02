@@ -39,7 +39,7 @@ number is required. The PR itself provides all necessary context.
 ## Phase 3: Fix and re-review (max 2 iterations)
 
 7. Check out the PR branch in an isolated workspace
-   (use agent_workspace_create)
+   (use agent-workspace_create)
 8. Fix the issues identified in the review
 9. Stage, commit, and push the fixes (delegate to @git-ops with workspace path)
 10. Re-review: delegate to @git-ops to get the updated PR diff and re-analyze
@@ -47,6 +47,6 @@ number is required. The PR itself provides all necessary context.
     delete_branch: true
 12. If issues remain after 2 remediation rounds → leave the PR open with
     a review comment listing remaining issues for manual review
-13. Destroy workspace (agent_workspace_destroy)
+13. Destroy workspace (agent-workspace_destroy)
 14. Report: PR status (merged or open with remaining issues), summary of
     fixes applied

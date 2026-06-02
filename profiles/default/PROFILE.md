@@ -19,6 +19,7 @@ agent_skills:
     - container-ops
     - cloudbuild-ops
     - gcloud-ops
+    - troubleshooting
   git-ops:
     - git-pr-workflow
     - git-release
@@ -56,6 +57,7 @@ workflow.
 | `container-ops` | devops | Podman container operations |
 | `cloudbuild-ops` | devops | Cloud Build CI/CD patterns |
 | `gcloud-ops` | devops | Google Cloud Platform operations |
+| `troubleshooting` | devops | Log/metric/system troubleshooting |
 | `git-pr-workflow` | git-ops | PR creation and review |
 | `git-release` | git-ops | Release management |
 | `readme-conventions` | docs | README best practices |

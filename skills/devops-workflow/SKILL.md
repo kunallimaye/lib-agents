@@ -197,7 +197,7 @@ Use conventional commits: `type(scope): description`
 After a PR is merged (either via the self-review-merge loop or manually),
 clean up to prevent branch accumulation:
 
-1. Destroy workspace: `agent_workspace_destroy` (if not already destroyed).
+1. Destroy workspace: `agent-workspace_destroy` (if not already destroyed).
    The workspace is kept alive during the review loop for remediation fixes,
    and destroyed only after the PR is merged or the loop completes.
 2. Delete local branch: `git branch -d <branch>` (in the main repo)

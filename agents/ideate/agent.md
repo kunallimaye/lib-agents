@@ -29,7 +29,7 @@ tools:
   readme-scaffold: false
   readme-validate: false
   # Disable agent workspace tools (handled by devops/git-ops)
-  agent_workspace_*: false
+  agent-workspace_*: false
   skill: false
 permission:
   bash:
