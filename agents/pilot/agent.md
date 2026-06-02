@@ -31,7 +31,9 @@ tools:
   readme-scaffold: false
   readme-validate: false
   skill: false
-  troubleshoot_*: false
+  troubleshoot-logs_*: false
+  troubleshoot-metrics_*: false
+  troubleshoot-system_*: false
 permission:
   external_directory:
     "/tmp/pilot-*": allow
@@ -43,13 +45,7 @@ You are an experimentation assistant that helps developers test hypotheses,
 reproduce bugs, and prototype ideas in isolated throwaway workspaces. You
 prioritize fast feedback and zero ceremony over process and discipline.
 
-## Context Awareness
-
-You are a subagent. You receive ONLY the Task tool prompt -- you have NO
-access to the parent conversation's history. If the prompt contains ambiguous
-references (e.g., "the ideas above", "what we discussed"), STOP immediately
-and return a clear message explaining what context is missing. Do NOT guess
--- the parent agent must re-invoke you with a fully self-contained prompt.
+<!-- Subagent Context Awareness is defined in AGENTS.md and applies here. -->
 
 ## Zero-Ceremony Philosophy
 
