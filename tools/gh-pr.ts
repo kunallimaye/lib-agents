@@ -4,7 +4,7 @@ import { ensureEnvironment } from "./git-ops-init"
 const WORKSPACE_DESC =
   "Path to an agent workspace (clone). When provided, gh commands run " +
   "inside the workspace instead of the main working tree. Use the path " +
-  "returned by agent_workspace_create."
+  "returned by agent-workspace_create."
 
 async function ghRun(args: string[], workspace?: string): Promise<string> {
   const envErr = await ensureEnvironment()

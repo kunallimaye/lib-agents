@@ -37,7 +37,7 @@ permission:
     container-ops: allow
     cloudbuild-ops: allow
     gcloud-ops: allow
-    log-analysis: allow
+    troubleshooting: allow
   bash:
     "*": allow
 ---
@@ -218,7 +218,7 @@ After completing the requested work:
    - Set `delete_branch: true` to clean up the remote branch
    - If merge fails (e.g., conflicts, branch protection rules), report the
      failure and leave the PR open
-8. **Clean up workspace** -- Run `agent_workspace_destroy` to remove the
+8. **Clean up workspace** -- Run `agent-workspace_destroy` to remove the
    isolated clone from `/tmp/agent-*`. Do NOT destroy the workspace until
    the PR is merged or the review loop is complete.
 9. **Report back** -- Summarize what was done, the PR URL, the linked issue,

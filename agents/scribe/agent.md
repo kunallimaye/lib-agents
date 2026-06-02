@@ -36,7 +36,7 @@ tools:
   pilot-workspace_*: false
   pilot-run_*: false
   # Disable agent workspace tools
-  agent_workspace_*: false
+  agent-workspace_*: false
 permission:
   skill:
     "*": deny

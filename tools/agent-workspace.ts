@@ -315,7 +315,7 @@ export const destroy = tool({
     )
 
     if (wsIndex === -1) {
-      return `Workspace '${args.name}' not found in manifest. Use agent_workspace_list to see active workspaces.`
+      return `Workspace '${args.name}' not found in manifest. Use agent-workspace_list to see active workspaces.`
     }
 
     const ws = manifest.workspaces[wsIndex]
