@@ -315,10 +315,12 @@ print_topology() {
 
 # Returns 0 (true) when role_a project equals role_b project.
 # Usage: same_project ORCH_PROJECT BUILD_PROJECT && echo collapsed
+#
+# Uses bash indirect expansion (\${!var}) instead of \`eval\` — avoids the
+# class of code-injection risk that \`eval\` on caller-supplied strings
+# carries, even though every caller here passes a hardcoded identifier.
 same_project() {
-  local a_val b_val
-  a_val="$(eval "echo \\\${$1:-}")"
-  b_val="$(eval "echo \\\${$2:-}")"
+  local a_val="\${!1:-}" b_val="\${!2:-}"
   [[ -n "\${a_val}" && "\${a_val}" == "\${b_val}" ]]
 }
 
@@ -334,6 +336,10 @@ mkdir -p "\${LOG_DIR}"
 start_log() {
   local action="\${1:-unknown}"
   LOG_FILE="\${LOG_DIR}/$(date +%Y%m%d-%H%M%S)-\${action}.log"
+  # Set SCRIPT_ACTION so the EXIT/INT/TERM/HUP trap handler can name the
+  # action in its forensic log line — without this, only detached-orchestrated
+  # runs (which set SCRIPT_ACTION inside run_detached_*) had meaningful context.
+  SCRIPT_ACTION="\${action}"
   exec > >(tee -a "\${LOG_FILE}") 2>&1
   log_info "Logging to \${LOG_FILE}"
 }
@@ -793,14 +799,39 @@ _tf_substitutions() {
   echo "\${subs}"
 }
 
+# Resolve the caller's gcloud quota project once and cache it in
+# CALLER_PROJECT. Used by _grant_role to decide whether a grant is
+# cross-project (caller's quota project ≠ target).
+#
+# Why this matters: the --billing-project flag routes the API call's
+# quota+billing to the target project, which is required when the
+# caller's quota project differs from the target (otherwise an org
+# policy can reject with "no billing project"). The previous
+# implementation compared against ORCH_PROJECT, which only matched
+# the caller's project by coincidence in fully-collapsed topologies.
+# In split-orch topologies (or any case where \`gcloud config\` points
+# at a project other than ORCH_PROJECT), the branch misfired —
+# missing the flag for genuine cross-project grants, or adding it
+# unnecessarily for local grants.
+_resolve_caller_project() {
+  if [[ -z "\${CALLER_PROJECT:-}" ]]; then
+    CALLER_PROJECT="$(gcloud config get-value project 2>/dev/null || true)"
+    if [[ -z "\${CALLER_PROJECT}" ]]; then
+      die "Unable to detect caller's gcloud project. Run 'gcloud config set project <id>' first."
+    fi
+    log_info "  caller project (gcloud quota): \${CALLER_PROJECT}"
+  fi
+}
+
 # Cross-project IAM grant helper. Each grant in admin-cloud-init may target
-# the local project (current role) or a different one (cross-project). The
-# behavior is uniform — branch on local-vs-cross-project for the operator
+# the local project (caller's quota project) or a different one (cross-project).
+# The behavior is uniform — branch on caller-vs-target for the operator
 # warning message and the --billing-project flag.
 _grant_role() {
   local target_project="\$1" member="\$2" role="\$3"
+  _resolve_caller_project
   local extra_flag=""
-  if [[ "\${target_project}" != "\${ORCH_PROJECT}" ]]; then
+  if [[ "\${target_project}" != "\${CALLER_PROJECT}" ]]; then
     extra_flag="--billing-project=\${target_project}"
     log_info "  cross-project grant: \${role} on \${target_project} for \${member}"
   fi
@@ -851,12 +882,17 @@ _step_enable_apis() {
     "logging.googleapis.com"
   )
   # API enable is per-project (each role's project that owns resources).
-  # Build project needs build-time APIs; runtime needs runtime APIs.
+  # Build, runtime, AND orchestration need APIs — orchestration needs
+  # iam.googleapis.com + cloudresourcemanager.googleapis.com so the
+  # agent SA management and custom-role creation steps work.
   # We enable the full set on each distinct project for simplicity —
-  # idempotent and cheap.
-  local projects=()
-  projects+=("\${BUILD_PROJECT}")
+  # idempotent and cheap. Dedup by value across all three roles.
+  local projects=("\${BUILD_PROJECT}")
   same_project BUILD_PROJECT RUNTIME_PROJECT || projects+=("\${RUNTIME_PROJECT}")
+  if ! same_project ORCH_PROJECT BUILD_PROJECT \\
+      && ! same_project ORCH_PROJECT RUNTIME_PROJECT; then
+    projects+=("\${ORCH_PROJECT}")
+  fi
   for p in "\${projects[@]}"; do
     log_info "  enabling APIs on \${p}..."
     for api in "\${apis[@]}"; do
@@ -935,6 +971,12 @@ _step_create_agent_sa_and_bind() {
 
   # Bind agent SA to custom role on orchestration project with 30-day expiry.
   # Expiry condition forces graceful credential rotation (re-run admin-cloud-init).
+  #
+  # Guard against empty AGENT_ROLE_EXPIRY_DAYS: BSD date (macOS) silently
+  # emits 'now' when the relative offset is empty, which would bind the
+  # role with an already-expired condition. common.sh sets a default of 30,
+  # but be explicit about the failure mode if it ever gets cleared.
+  [[ -n "\${AGENT_ROLE_EXPIRY_DAYS}" ]] || die "AGENT_ROLE_EXPIRY_DAYS is empty. Set it in config.toml ([gcp.orchestration].agent_role_expiry_days) or .env, or accept the 30-day default in common.sh."
   local expiry_ts
   expiry_ts="$(date -u -d "+\${AGENT_ROLE_EXPIRY_DAYS} days" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null \\
     || date -u -v+\${AGENT_ROLE_EXPIRY_DAYS}d '+%Y-%m-%dT%H:%M:%SZ')"
@@ -997,6 +1039,7 @@ admin_cloud_init() {
   print_topology
   require_cmd gcloud
   _require_topology
+  _resolve_caller_project
   [[ -z "\${TF_STATE_BUCKET}" ]] && die "TF_STATE_BUCKET is not set."
 
   if [[ "\${CONFIRM:-}" != "yes" ]]; then
