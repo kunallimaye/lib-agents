@@ -17,6 +17,11 @@ script.
 
 ### BREAKING
 
+- **`ANTIGRAVITY-AGENTS.md` removed.** The Antigravity / Jetski workflow
+  support is gone (issue [#146](https://github.com/kunallimaye/lib-agents/issues/146)).
+  Any downstream user who pulled `ANTIGRAVITY-AGENTS.md` via the
+  documented `curl ... -o AGENTS.md` command is broken on next install.
+  No migration path: use the standard `AGENTS.md` shipped with the repo.
 - **`config.toml` schema replaced.** The old `[gcp.default]` +
   `[gcp.staging]` + `[gcp.production]` environment-axis schema is GONE.
   Replaced with a **role-axis** schema: `[gcp.defaults]` (required
