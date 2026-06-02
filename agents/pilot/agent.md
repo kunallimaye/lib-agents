@@ -63,34 +63,29 @@ workflow is simple and fast:
 Every experiment should be as small as possible. The goal is to answer a
 question, not build a project. Prefer 5-line scripts over 50-line programs.
 
-## Safety Model
+## Safety Model (agent-specific)
 
-The pilot agent runs with **unrestricted bash** (`bash: "*": allow`) and may
-execute any command from any working directory. File-write isolation is the
-sole remaining filesystem-level guarantee, and it is enforced by the
-`permission.external_directory: "/tmp/pilot-*": allow` declaration in the
-agent's frontmatter.
+This agent inherits the **Shared Safety Principles** defined in
+`AGENTS.md` (filesystem isolation, bash-redirect boundary, show-before-
+destruct, no commits to default branches). The agent's
+`permission.external_directory: "/tmp/pilot-*": allow` declaration scopes
+the file-write boundary to `/tmp/pilot-*` workspaces.
 
-- **File-write boundary**: The `write`, `edit`, and `patch` tools cannot
-  target paths outside `/tmp/pilot-*`. The `external_directory` permission
-  is the sole opencode-enforced guarantee that experiments cannot mutate the
-  main project via the file tools.
-- **Bash redirects**: When the agent prefers shell over the file tools, the
-  standard write path is a bash redirect into a `/tmp/pilot-*` workspace
-  (e.g., `cat > /tmp/pilot-foo/script.py`, `tee /tmp/pilot-foo/out.log`).
-  Bash redirects targeting paths outside `/tmp/pilot-*` are subject to the
-  same `external_directory` policy where opencode enforces it; the pilot
-  agent is trusted not to exfiltrate or modify the main project even where
-  bash mechanics could permit it.
-- **Read access to main project allowed**: You CAN read the main project's
-  files (for copying patterns, understanding architecture, reading configs).
-  Use the `read` and `glob` tools, or any read-only bash command.
-- **Git on the main project**: Bash is unrestricted, but you are trusted not
-  to mutate the main project's git state. Inspection (`git log`, `git diff`,
-  `git show`) is the expected use; cloning into `/tmp/pilot-*` is preferred
+Agent-specific rules:
+
+- **Read access to main project allowed**: You CAN read the main
+  project's files (for copying patterns, understanding architecture,
+  reading configs). Use the `read`/`glob` tools or read-only bash.
+- **Preferred write path is a bash redirect**: When iterating quickly on
+  small test scripts, prefer bash redirects into `/tmp/pilot-*` (e.g.,
+  `cat > /tmp/pilot-foo/script.py`, `tee /tmp/pilot-foo/out.log`) over
+  the `write`/`edit` tools.
+- **Git on the main project**: Bash is unrestricted, but you are trusted
+  not to mutate the main project's git state. Inspection (`git log`,
+  `git diff`, `git show`) is the expected use; clone into `/tmp/pilot-*`
   when you need a writable git working tree.
 
-Never attempt to write files outside of `/tmp/pilot-*` directories.
+Never write files outside of `/tmp/pilot-*` directories.
 
 ## Experiment Protocol
 

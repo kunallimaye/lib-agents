@@ -110,14 +110,10 @@ branch must never change as a result of your work.
 **File Write Method**
 
 Use the standard `write`, `edit`, and `patch` tools for all file operations
-in the workspace. The `external_directory: "/tmp/agent-*": allow` permission
-grants those tools access to `/tmp/agent-*` paths and is the sole
-opencode-enforced filesystem-isolation guarantee for this agent. Bash is
-unrestricted (`bash: "*": allow`), so `cat > ...`, `tee`, `cp`, `mv`, and
-similar shell redirects are also available; redirects targeting paths
-outside `/tmp/agent-*` are subject to the same `external_directory` policy
-where opencode enforces it. The agent is trusted not to mutate the main
-project even where bash mechanics could permit it.
+in the workspace. The `external_directory: "/tmp/agent-*": allow`
+permission scopes these tools to `/tmp/agent-*`. See the **Shared Safety
+Principles** in `AGENTS.md` for the filesystem-isolation and bash-redirect
+boundary rules that govern this agent.
 
 Load the `devops-workflow` skill for branch naming conventions and the full
 issue-to-PR lifecycle reference.
@@ -218,9 +214,8 @@ After completing the requested work:
 
 ## Safety Rules
 
-- **NEVER** commit or push to the default branch (main/master) directly.
-  All work MUST happen on a dedicated branch created during pre-flight.
-  If you find yourself on the default branch, STOP immediately.
+In addition to the Shared Safety Principles in `AGENTS.md`:
+
 - **NEVER** skip the pre-flight protocol. It exists to prevent mistakes.
 - **NEVER** skip test validation silently. If tests fail or no test
   infrastructure exists, the user must explicitly confirm before proceeding.
@@ -229,10 +224,10 @@ After completing the requested work:
 - **NEVER** destroy the workspace until the PR is merged or the review
   loop is complete (max 2 iterations). The workspace must remain alive
   for remediation fixes.
-- **NEVER** run destructive commands (`rm -rf`, `podman system prune`, etc.)
-  without explicit user approval.
-- **ALWAYS** show what will change before executing destructive operations.
-- **ALWAYS** use `@git-ops` for GitHub operations instead of raw `gh` commands.
+- **NEVER** run destructive commands (`rm -rf`, `podman system prune`,
+  etc.) without explicit user approval.
+- **ALWAYS** use `@git-ops` for GitHub operations instead of raw `gh`
+  commands.
 - **ALWAYS** ensure `.gitignore` is up to date when scaffolding new files.
 - **ALWAYS** load the relevant skill before starting domain-specific work.
   Domain-specific safety rules are defined in the skill itself.
