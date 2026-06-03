@@ -544,12 +544,19 @@ AR_IMAGE="\${AR_LOCATION}-docker.pkg.dev/\${GCP_PROJECT}/\${AR_REPO}/\${IMAGE_NA
 
 # Resolve the staging project for CB submission.
 # All builds submit to staging regardless of ENVIRONMENT.
+# Cached after first call to avoid repeatedly shelling out to Python.
+_STAGING_PROJECT_CACHE=""
 _staging_project() {
-  if [[ -f "\${PROJECT_ROOT}/config.toml" ]] && command -v python3 &>/dev/null; then
-    ENVIRONMENT=staging python3 "\${SCRIPT_DIR}/config.py" 2>/dev/null | grep '^export GCP_PROJECT=' | sed 's/export GCP_PROJECT="\\(.*\\)"/\\1/'
-  else
-    echo "\${GCP_PROJECT}"
+  if [[ -n "\${_STAGING_PROJECT_CACHE}" ]]; then
+    echo "\${_STAGING_PROJECT_CACHE}"
+    return
   fi
+  if [[ -f "\${PROJECT_ROOT}/config.toml" ]] && command -v python3 &>/dev/null; then
+    _STAGING_PROJECT_CACHE="$(ENVIRONMENT=staging python3 "\${SCRIPT_DIR}/config.py" 2>/dev/null | grep '^export GCP_PROJECT=' | sed 's/export GCP_PROJECT="\\(.*\\)"/\\1/')"
+  else
+    _STAGING_PROJECT_CACHE="\${GCP_PROJECT}"
+  fi
+  echo "\${_STAGING_PROJECT_CACHE}"
 }
 
 # Build Cloud Build substitutions for Terraform pipelines
@@ -579,11 +586,18 @@ init() {
 
   log_info "Phase 1: Creating deployer SA '\${SA_NAME}' in \${GCP_PROJECT}..."
 
-  # Create deployer service account
-  gcloud iam service-accounts create "\${SA_NAME}" \\
-    --project="\${GCP_PROJECT}" \\
-    --display-name="\${PROJECT_NAME} Cloud Build deployer" \\
-    2>/dev/null || log_warn "SA already exists: \${SA_EMAIL}"
+  # Create deployer service account (suppress only the "already exists" case;
+  # surface any other failure so IAM/quota errors aren't silently swallowed)
+  local _sa_create_out
+  if ! _sa_create_out="$(gcloud iam service-accounts create "\${SA_NAME}" \\
+      --project="\${GCP_PROJECT}" \\
+      --display-name="\${PROJECT_NAME} Cloud Build deployer" 2>&1)"; then
+    if [[ "\${_sa_create_out}" == *"already exists"* ]]; then
+      log_info "SA already exists: \${SA_EMAIL}"
+    else
+      log_warn "SA create failed: \${_sa_create_out}"
+    fi
+  fi
 
   # Grant bootstrap roles (minimum for Terraform to run and self-escalate)
   local BOOTSTRAP_ROLES=(
@@ -716,7 +730,7 @@ promote() {
     --project="\${STAGING_PROJECT}" \\
     --service-account="projects/\${STAGING_PROJECT}/serviceAccounts/\${DEPLOYER_SA}" \\
     --config="\${PROJECT_ROOT}/cicd/cloudbuild-apply.yaml" \\
-    --substitutions="_TF_ACTION=apply,_TF_STATE_BUCKET=\${PROD_PROJECT}-tfstate,_TF_STATE_PREFIX=\${PROD_STATE_PREFIX},_REGION=\${GCP_REGION},_CB_SERVICE_ACCOUNT=\${DEPLOYER_SA},_RUNTIME_SA_NAME=\${PROJECT_NAME}-runtime" \\
+    --substitutions="_TF_ACTION=apply,_TF_STATE_BUCKET=\${PROD_PROJECT}-tfstate,_TF_STATE_PREFIX=\${PROD_STATE_PREFIX},_REGION=\${GCP_REGION},_CB_SERVICE_ACCOUNT=\${DEPLOYER_SA},_RUNTIME_SA_NAME=\${PROJECT_NAME}-runtime,_IMAGE=\${PROD_IMAGE}" \\
     "\${PROJECT_ROOT}"
 
   log_ok "Production deployment complete: \${SHA_TAG} → \${PROD_PROJECT}"
@@ -738,7 +752,7 @@ clean() {
 
   gcloud builds submit \\
     --project="\${STAGING_PROJECT}" \\
-    --service-account="projects/\${STAGING_PROJECT}/serviceAccounts=\${DEPLOYER_SA}" \\
+    --service-account="projects/\${STAGING_PROJECT}/serviceAccounts/\${DEPLOYER_SA}" \\
     --config="\${PROJECT_ROOT}/cicd/cloudbuild-apply.yaml" \\
     --substitutions="$(_tf_substitutions destroy)" \\
     "\${PROJECT_ROOT}"
@@ -1014,6 +1028,7 @@ steps:
       - 'TF_VAR_region=\${_REGION}'
       - 'TF_VAR_cb_service_account=\${_CB_SERVICE_ACCOUNT}'
       - 'TF_VAR_runtime_sa_name=\${_RUNTIME_SA_NAME}'
+      - 'TF_VAR_image=\${_IMAGE}'
 
 substitutions:
   _TF_ACTION: 'apply'
@@ -1022,6 +1037,7 @@ substitutions:
   _REGION: 'us-central1'
   _CB_SERVICE_ACCOUNT: ''
   _RUNTIME_SA_NAME: 'app-runtime'
+  _IMAGE: ''
 
 options:
   logging: CLOUD_LOGGING_ONLY
@@ -1090,6 +1106,11 @@ variable "cb_service_account" {
   description = "Cloud Build deployer service account email (for functional IAM grants)"
   type        = string
   default     = ""
+
+  validation {
+    condition     = length(var.cb_service_account) > 0
+    error_message = "cb_service_account must be set to the deployer SA email."
+  }
 }
 
 variable "runtime_sa_name" {
@@ -1211,6 +1232,14 @@ resource "google_cloud_run_v2_service_iam_member" "public" {
 
 # ─── Domain Mapping (conditional) ───────────────────────────────────
 # Only created when var.domain is set to a non-empty value.
+#
+# NOTE: google_cloud_run_domain_mapping is the v1 (Knative) resource and is
+# intentionally paired with the v2 service above — GCP currently exposes no
+# v2-native domain mapping resource. The v1 API still accepts domain mappings
+# for v2 services as long as metadata.namespace is the project ID (Knative's
+# namespace model) and spec.route_name is the service name. This is the
+# documented interop path; revisit when google_cloud_run_v2_domain_mapping
+# (or equivalent) ships.
 
 resource "google_cloud_run_domain_mapping" "app" {
   count    = var.domain != "" ? 1 : 0
@@ -1218,6 +1247,7 @@ resource "google_cloud_run_domain_mapping" "app" {
   name     = var.domain
 
   metadata {
+    # Knative namespace must be the project ID (NOT the v2 service name).
     namespace = var.project_id
   }
 
